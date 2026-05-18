@@ -1,0 +1,43 @@
+{
+  "name": "@lensui/html",
+  "version": "0.1.0",
+  "description": "Browser DOM renderer and reactive runtime for LensUI lightcode.",
+  "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "ArdaBot, Inc.",
+    "url": "https://www.ardabot.ai/"
+  },
+  "homepage": "https://lensui.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ardabotai/lensui.git",
+    "directory": "packages/html"
+  },
+  "bugs": {
+    "url": "https://github.com/ardabotai/lensui/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "dependencies": {
+    "@lensui/core": "workspace:^"
+  },
+  "files": [
+    "dist",
+    "src/index.ts",
+    "src/stage-global.ts"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  }
+}

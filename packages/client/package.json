@@ -1,0 +1,42 @@
+{
+  "name": "@lensui/client",
+  "version": "0.1.0",
+  "description": "Tiny WebSocket command-stream client for LensUI browser hosts.",
+  "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "ArdaBot, Inc.",
+    "url": "https://www.ardabot.ai/"
+  },
+  "homepage": "https://lensui.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ardabotai/lensui.git",
+    "directory": "packages/client"
+  },
+  "bugs": {
+    "url": "https://github.com/ardabotai/lensui/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "dependencies": {
+    "@lensui/core": "workspace:^"
+  },
+  "files": [
+    "dist",
+    "src/index.ts"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  }
+}

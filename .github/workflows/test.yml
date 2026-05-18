@@ -1,0 +1,44 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.0.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Check coverage
+        run: pnpm run coverage
+
+      - name: Check token-efficiency benchmark
+        run: pnpm run bench
+
+      - name: Install Playwright browser
+        run: pnpm run e2e:install
+
+      - name: Run e2e
+        run: pnpm run e2e

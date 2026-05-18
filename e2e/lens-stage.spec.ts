@@ -1,0 +1,734 @@
+import { expect, test, type Page } from "@playwright/test";
+import { createServer, type Server } from "node:http";
+import { once } from "node:events";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { startLensBridge } from "../packages/bridge/src/index";
+
+const stageURL = pathToFileURL(path.resolve("examples/stage-template.html")).toString();
+const siteRoot = path.resolve("apps/docs/out");
+let siteServer: Server;
+let siteOrigin = "";
+
+type LensApplyResult = {
+  ok: boolean;
+  error?: string;
+  sourceUpdates?: Array<{ id: string; contentType: string; payload: string }>;
+  metadata: {
+    dataSources: Array<{ id: string; url: string; ttl: number; mode: string }>;
+    bindings: Array<{ nodeKey: string; sourceID: string; path: string; role: string }>;
+  };
+};
+
+type LensStageHandle = {
+  render(lightcode: string, components?: unknown[]): LensApplyResult;
+  apply(commandStream: string): LensApplyResult;
+  setSource(id: string, payload: unknown): boolean;
+  read(kind: "lightcode" | "components" | "metadata" | "status"): unknown;
+};
+
+declare global {
+  interface Window {
+    lensStage?: LensStageHandle;
+  }
+}
+
+test.beforeAll(async () => {
+  siteServer = createServer(async (request, response) => {
+    try {
+      const url = new URL(request.url ?? "/", "http://localhost");
+      const pathname = decodeURIComponent(url.pathname);
+      const relative = pathname === "/"
+        ? "index.html"
+        : path.extname(pathname)
+          ? pathname.slice(1)
+          : `${pathname.slice(1)}.html`;
+      const resolved = path.resolve(siteRoot, relative);
+      if (resolved !== siteRoot && !resolved.startsWith(`${siteRoot}${path.sep}`)) {
+        response.writeHead(403);
+        response.end("forbidden");
+        return;
+      }
+      const body = await readFile(resolved);
+      response.writeHead(200, { "content-type": contentType(resolved) });
+      response.end(body);
+    } catch {
+      response.writeHead(404);
+      response.end("not found");
+    }
+  });
+
+  await new Promise<void>((resolve) => {
+    siteServer.listen(0, "127.0.0.1", () => {
+      const address = siteServer.address();
+      if (address && typeof address === "object") {
+        siteOrigin = `http://127.0.0.1:${address.port}`;
+      }
+      resolve();
+    });
+  });
+});
+
+test.afterAll(async () => {
+  await new Promise<void>((resolve, reject) => {
+    siteServer.close((error) => error ? reject(error) : resolve());
+  });
+});
+
+test.describe("LensUI browser stage runtime", () => {
+  test("mounts from the stage template and renders lightcode", async ({ page }) => {
+    const health = collectPageHealth(page);
+
+    await page.goto(stageURL);
+    await expect(page).toHaveTitle("LensUI stage");
+    await waitForLensStage(page);
+
+    const result = await page.evaluate((lightcode) => {
+      return window.lensStage!.render(lightcode);
+    }, `0DS|news|https://example.com/feed.json|ttl=60|mode=poll
+0F|0|ok=120,50,50
+0V|E2E Pulse|Runtime mounted
+1G|auto|min=180|max=2
+2M|Cost|128|usd|tone=success
+2H|line|1,2,3|Trend
+1WV|yt|story so far covers|play=1
+1X|shader|ready
+1VV|network|Relations
+1NL|Latest||$news.items`);
+
+    expect(result.ok, result.error).toBe(true);
+    expect(result.metadata.dataSources).toEqual([
+      { id: "news", url: "https://example.com/feed.json", ttl: 60, mode: "poll" }
+    ]);
+    expect(result.metadata.bindings.some((binding) => binding.sourceID === "news" && binding.path === "items")).toBe(true);
+
+    await expect(page.locator("#lens-stage-root")).toBeVisible();
+    await expect(page.getByText("E2E Pulse")).toBeVisible();
+    await expect(page.getByText("128")).toBeVisible();
+    await expect(page.locator("[data-lens-adaptive-grid]")).toHaveAttribute("data-min-cell-width", "180");
+    await expect(page.locator("[data-lens-scene]")).toHaveAttribute("data-scene-kind", "shader");
+    await expect(page.locator("[data-vector-kind]")).toHaveAttribute("data-vector-kind", "network");
+    await expect(page.locator("[data-lens-webview-url]")).toHaveAttribute("data-lens-webview-url", /youtube\.com\/results/);
+
+    expect(await page.evaluate(() => window.lensStage!.read("lightcode"))).toContain("E2E Pulse");
+    expect(health.errors).toEqual([]);
+  });
+
+  test("updates live sources and navigates deck pages", async ({ page }) => {
+    const health = collectPageHealth(page);
+
+    await page.goto(stageURL);
+    await waitForLensStage(page);
+
+    const initial = await page.evaluate((lightcode) => window.lensStage!.render(lightcode), `0DS|news|https://example.com/feed.json|ttl=600|mode=poll
+0F|0
+0V|Live Brief|Waiting
+1M|Headline|$news.headline|source
+1NL|Latest||$news.items
+1D
+2O|One
+3T|Page one
+2O|Two
+3T|Page two`);
+
+    expect(initial.ok, initial.error).toBe(true);
+    await expect(page.getByText("Live Brief")).toBeVisible();
+    await expect(page.getByText("No stories yet")).toBeVisible();
+
+    const handled = await page.evaluate(() => {
+      return window.lensStage!.setSource("news", {
+        headline: "Updated from cache",
+        items: "Story A,Desk;Story B,Wire"
+      });
+    });
+
+    expect(handled).toBe(true);
+    await expect(page.getByText("Updated from cache")).toBeVisible();
+    await expect(page.getByText("Story A")).toBeVisible();
+    await expect(page.getByText("Story B")).toBeVisible();
+
+    const deck = page.locator("[data-lens-deck]");
+    await expect(deck).toHaveAttribute("data-lens-page", "0");
+    await deck.locator("[data-lens-next]").click();
+    await expect(deck).toHaveAttribute("data-lens-page", "1");
+    await deck.locator("[data-lens-prev]").click();
+    await expect(deck).toHaveAttribute("data-lens-page", "0");
+
+    expect(health.errors).toEqual([]);
+  });
+
+  test("shows a render failure state and preserves the last valid UI", async ({ page }) => {
+    const health = collectPageHealth(page);
+
+    await page.goto(stageURL);
+    await waitForLensStage(page);
+
+    const initial = await page.evaluate((lightcode) => window.lensStage!.render(lightcode), `0F|st=mono
+0V|Stable Surface|Before failure
+1M|State|valid`);
+
+    expect(initial.ok, initial.error).toBe(true);
+    await expect(page.getByText("Stable Surface")).toBeVisible();
+
+    const failed = await page.evaluate((lightcode) => window.lensStage!.render(lightcode), `0F|st=mono
+ 1M|Broken|bad indent`);
+
+    expect(failed.ok).toBe(false);
+    expect(failed.error).toContain("lightcode lines must start with a depth token");
+    await expect(page.getByText("Stable Surface")).toBeVisible();
+    await expect(page.locator("[data-lens-render-failure]")).toBeVisible();
+    await expect(page.getByText("Previous UI preserved. Fix the lightcode and render again.")).toBeVisible();
+
+    const recovered = await page.evaluate((lightcode) => window.lensStage!.render(lightcode), `0F|st=mono
+0V|Recovered Surface|Valid again
+1M|State|ok`);
+
+    expect(recovered.ok, recovered.error).toBe(true);
+    await expect(page.getByText("Recovered Surface")).toBeVisible();
+    await expect(page.locator("[data-lens-render-failure]")).toHaveCount(0);
+    expect(health.errors).toEqual([]);
+  });
+
+  test("reflows stage containers for narrow portrait screens without horizontal overflow", async ({ page }) => {
+    const health = collectPageHealth(page);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(stageURL);
+    await waitForLensStage(page);
+
+    const result = await page.evaluate((lightcode) => window.lensStage!.render(lightcode), `0F|st=studio
+0V|Runtime Pulse|Live data + renderer-owned visuals
+1G|auto|min=160|max=3
+2M|Latency|96ms|p95
+2M|Tokens|-64%|vs React
+2M|Sources|live|bound
+1H|line|18,22,17,28,34,30,42,38,51|signal|h=150
+1CP|Payload Choice|Small durable surface|items=Built-ins^default^Metrics, charts, media, timelines, comparisons^success;Saved^when needed^Custom JS or app widgets^warning
+1MO|Storyboard||items=https://example.com/a.jpg^A^Frame;https://example.com/b.jpg^B^Frame;https://example.com/c.jpg^C^Frame`);
+
+    expect(result.ok, result.error).toBe(true);
+    await expect(page.locator("#lens-stage-root")).toHaveAttribute("data-lens-size", "narrow");
+    await expect(page.locator("#lens-stage-root")).toHaveAttribute("data-lens-aspect", "portrait");
+    await expect(page.locator("#lens-stage-root")).toHaveAttribute("data-lens-flow", "scroll");
+
+    const report = await stageOverflowReport(page);
+    expect(report.gridCols[0]).toBe("1");
+    expect(report.scrollWidth).toBeLessThanOrEqual(report.rootWidth + 1);
+    expect(report.offenders).toEqual([]);
+    expect(health.errors).toEqual([]);
+  });
+
+  test("sizes runtime surfaces from their mount container instead of a 16:9 viewport", async ({ page }) => {
+    const health = collectPageHealth(page);
+
+    await page.setViewportSize({ width: 1100, height: 800 });
+    await page.goto(stageURL);
+    await waitForLensStage(page);
+    await page.locator("#lens-stage-mount").evaluate((element) => {
+      element.style.width = "320px";
+      element.style.height = "620px";
+    });
+
+    const result = await page.evaluate((lightcode) => window.lensStage!.render(lightcode), `0F|st=studio
+0V|Container Fit|Portrait host box
+1G|auto|min=180|max=3
+2M|Latency|96ms|p95
+2M|Tokens|-64%|vs React
+1H|line|18,22,17,28,34,30,42,38,51|signal|h=220
+1X|shader|host sized|h=260
+1MO|Frames||items=https://example.com/a.jpg^A^Frame;https://example.com/b.jpg^B^Frame;https://example.com/c.jpg^C^Frame`);
+
+    expect(result.ok, result.error).toBe(true);
+    await expect(page.locator("#lens-stage-root")).toHaveAttribute("data-lens-container-width", "320");
+    await expect(page.locator("#lens-stage-root")).toHaveAttribute("data-lens-container-height", "620");
+    await expect(page.locator("#lens-stage-root")).toHaveAttribute("data-lens-aspect", "portrait");
+    await expect(page.locator("#lens-stage-root")).toHaveAttribute("data-lens-flow", "scroll");
+
+    let dimensions = await stageDimensionReport(page);
+    expect(dimensions.rootWidth).toBe(320);
+    expect(dimensions.rootHeight).toBe(620);
+    expect(dimensions.viewportWidth).toBe(1100);
+    expect(dimensions.chartHeight).toBeLessThanOrEqual(220);
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.rootWidth + 1);
+
+    await page.locator("#lens-stage-mount").evaluate((element) => {
+      element.style.width = "860px";
+      element.style.height = "320px";
+    });
+    await page.waitForFunction(() => document.querySelector<HTMLElement>("#lens-stage-root")?.dataset.lensContainerWidth === "860");
+
+    await expect(page.locator("#lens-stage-root")).toHaveAttribute("data-lens-container-width", "860");
+    await expect(page.locator("#lens-stage-root")).toHaveAttribute("data-lens-container-height", "320");
+    await expect(page.locator("#lens-stage-root")).toHaveAttribute("data-lens-aspect", "wide");
+    await expect(page.locator("#lens-stage-root")).toHaveAttribute("data-lens-flow", "scroll");
+    dimensions = await stageDimensionReport(page);
+    expect(dimensions.rootWidth).toBe(860);
+    expect(dimensions.rootHeight).toBe(320);
+    expect(dimensions.chartHeight).toBeLessThanOrEqual(140);
+    expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.rootWidth + 1);
+    expect(health.errors).toEqual([]);
+  });
+
+  test("supports runtime auto sizing and stage overflow scroll", async ({ page }) => {
+    const health = collectPageHealth(page);
+    const tallLightcode = `0F|st=mono
+0V|Overflow Surface|Runtime sizing contract
+1G|auto|min=180|max=3
+2M|Latency|96ms|p95
+2M|Tokens|-64%|vs React
+2M|Sources|live|bound
+1H|line|18,22,17,28,34,30,42,38,51|signal|h=260
+1X|shader|host sized|h=360
+1ST|Long Loop|Overflow check|items=One^done^Runtime owned;Two^done^Runtime owned;Three^active^Runtime owned;Four^wait^Runtime owned;Five^wait^Runtime owned;Six^wait^Runtime owned;Seven^wait^Runtime owned;Eight^wait^Runtime owned`;
+
+    await page.setViewportSize({ width: 1000, height: 520 });
+    await page.goto(stageURL);
+    await waitForLensStage(page);
+    await page.locator("#lens-stage-mount").evaluate((element) => {
+      element.dataset.lensSizing = "stage";
+      element.style.width = "760px";
+      element.style.height = "340px";
+    });
+
+    const stageSize = await renderAndCaptureSize(page, tallLightcode);
+    expect(stageSize.sizing).toBe("stage");
+    expect(stageSize.flow).toBe("scroll");
+    expect(stageSize.overflowY).toBe(true);
+    await expect(page.locator("#lens-stage-root")).toHaveAttribute("data-lens-sizing", "stage");
+    await expect(page.locator("#lens-stage-root")).toHaveAttribute("data-lens-flow", "scroll");
+    expect(await page.locator("#lens-stage-root").evaluate((element) => getComputedStyle(element).overflowY)).toBe("auto");
+
+    await page.locator("#lens-stage-mount").evaluate((element) => {
+      element.dataset.lensSizing = "auto";
+      element.style.width = "480px";
+      element.style.height = "360px";
+    });
+    const autoSize = await renderAndCaptureSize(page, tallLightcode);
+    expect(autoSize.sizing).toBe("auto");
+    expect(autoSize.flow).toBe("auto");
+    expect(autoSize.contentHeight).toBeGreaterThan(360);
+    await expect(page.locator("#lens-stage-root")).toHaveAttribute("data-lens-sizing", "auto");
+    await expect(page.locator("#lens-stage-root")).toHaveAttribute("data-lens-flow", "auto");
+    expect(await page.locator("#lens-stage-root").evaluate((element) => getComputedStyle(element).overflowY)).toBe("hidden");
+    expect(health.errors).toEqual([]);
+  });
+
+  test("supports multiple runtime containers in one document", async ({ page }) => {
+    const health = collectPageHealth(page);
+
+    await page.goto(stageURL);
+    await waitForLensStage(page);
+
+    const registry = await page.evaluate(() => {
+      const second = document.createElement("div");
+      second.dataset.lensStage = "1";
+      second.dataset.lensSizing = "auto";
+      second.style.width = "420px";
+      second.style.height = "320px";
+      document.body.appendChild(second);
+      const runtime = (window as any).LensUIBundle.createStageRuntime(second);
+      window.lensStage!.render("0F|st=mono\n0V|First Runtime|Original");
+      runtime.render("0F|st=studio\n0V|Second Runtime|Scoped");
+      return {
+        activeText: document.querySelector("#lens-stage-mount")?.textContent ?? "",
+        secondText: second.textContent ?? "",
+        registrySize: (window as any).lensStages?.size ?? 0,
+        secondLensID: second.dataset.lensId ?? ""
+      };
+    });
+
+    expect(registry.activeText).toContain("First Runtime");
+    expect(registry.secondText).toContain("Second Runtime");
+    expect(registry.registrySize).toBeGreaterThanOrEqual(2);
+    expect(registry.secondLensID).toBeTruthy();
+    expect(health.errors).toEqual([]);
+  });
+
+  test("resolves system light and dark color modes", async ({ page }) => {
+    const health = collectPageHealth(page);
+
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.goto(stageURL);
+    await waitForLensStage(page);
+    let result = await page.evaluate((lightcode) => window.lensStage!.render(lightcode), "0F|st=mono\n0V|System Theme");
+    expect(result.ok, result.error).toBe(true);
+    await expect(page.locator("#lens-stage-mount")).toHaveAttribute("data-lens-color-mode", "light");
+    await expect(page.locator("#lens-stage-mount")).toHaveAttribute("data-lens-requested-color-mode", "system");
+    expect(await page.locator("#lens-stage-mount").evaluate((element) => getComputedStyle(element).getPropertyValue("--background").trim())).toBe("0 0% 98%");
+
+    await page.emulateMedia({ colorScheme: "dark" });
+    result = await page.evaluate((lightcode) => window.lensStage!.render(lightcode), "0F|st=mono\n0V|System Theme");
+    expect(result.ok, result.error).toBe(true);
+    await expect(page.locator("#lens-stage-mount")).toHaveAttribute("data-lens-color-mode", "dark");
+    expect(await page.locator("#lens-stage-mount").evaluate((element) => getComputedStyle(element).getPropertyValue("--background").trim())).toBe("0 0% 3%");
+
+    result = await page.evaluate((lightcode) => window.lensStage!.render(lightcode), "0F|st=studio|mode=light\n0V|Forced Light");
+    expect(result.ok, result.error).toBe(true);
+    await expect(page.locator("#lens-stage-mount")).toHaveAttribute("data-lens-color-mode", "light");
+    await expect(page.locator("#lens-stage-mount")).toHaveAttribute("data-lens-requested-color-mode", "light");
+    expect(health.errors).toEqual([]);
+  });
+
+  test("applies command streams without a page reload", async ({ page }) => {
+    const health = collectPageHealth(page);
+
+    await page.goto(stageURL);
+    await waitForLensStage(page);
+
+    const applied = await page.evaluate((commandStream) => window.lensStage!.apply(commandStream), `!
+@!|KPI|a|g
+0@|KPI|M|tone=success
+.
+R
+0F|0
+0V|Patch Demo
+1KPI|Cost|12|usd
+.
+^|3|1
+1KPI|Cost|14|usd
+.`);
+
+    expect(applied.ok, applied.error).toBe(true);
+    await expect(page.getByText("Patch Demo")).toBeVisible();
+    await expect(page.getByText("14")).toBeVisible();
+    expect(await page.evaluate(() => window.lensStage!.read("lightcode"))).toContain("KPI|Cost|14|usd");
+    expect(health.errors).toEqual([]);
+  });
+
+  test("applies source update messages from command streams", async ({ page }) => {
+    const health = collectPageHealth(page);
+
+    await page.goto(stageURL);
+    await waitForLensStage(page);
+
+    const initial = await page.evaluate((lightcode) => window.lensStage!.render(lightcode), `0DS|metrics|https://example.com/metrics.json|ttl=3|mode=poll
+0F|st=mono
+0V|Metric Feed|Polling source
+1M|Latency|$metrics.latency|p95`);
+
+    expect(initial.ok, initial.error).toBe(true);
+    await expect(page.getByText("Metric Feed")).toBeVisible();
+
+    const applied = await page.evaluate((commandStream) => window.lensStage!.apply(commandStream), `!
+S|metrics|application/json
+{"latency":"88ms"}
+.`);
+
+    expect(applied.ok, applied.error).toBe(true);
+    expect(applied.sourceUpdates).toEqual([{ id: "metrics", contentType: "application/json", payload: "{\"latency\":\"88ms\"}" }]);
+    await expect(page.getByText("88ms")).toBeVisible();
+    expect(health.errors).toEqual([]);
+  });
+
+  test("runs scripts from raw html components", async ({ page }) => {
+    const health = collectPageHealth(page);
+
+    await page.goto(stageURL);
+    await waitForLensStage(page);
+
+    const applied = await page.evaluate((commandStream) => window.lensStage!.apply(commandStream), `!
+@!|HotHTML|html|g
+<div id="hot-html" onclick="window.__lensHotHTMLClicked = true">
+  <span class="value">{{0}}</span>
+  {{children}}
+  <script>
+    window.__lensHotHTMLRuns = (window.__lensHotHTMLRuns || 0) + 1;
+    document.querySelector("#hot-html .value").textContent += " scripted";
+  </script>
+</div>
+.
+R
+0F|0
+0V|Raw Component
+1HotHTML|active
+2T|child node
+.`);
+
+    expect(applied.ok, applied.error).toBe(true);
+    await expect(page.getByText("active scripted")).toBeVisible();
+    await expect(page.getByText("child node")).toBeVisible();
+    expect(await page.evaluate(() => (window as any).__lensHotHTMLRuns)).toBe(1);
+
+    await page.locator("#hot-html").click();
+    expect(await page.evaluate(() => (window as any).__lensHotHTMLClicked)).toBe(true);
+    expect(health.errors).toEqual([]);
+  });
+
+  test("renders the LensUI specimens page with real runtime iframes", async ({ page }) => {
+    test.setTimeout(90_000);
+    const health = collectPageHealth(page);
+
+    await page.goto(`${siteOrigin}/components`);
+    await expect(page.getByText("Maximum visual range, minimum model syntax.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Mono", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Runtime Access", exact: true })).toBeVisible();
+    await expect(page.getByText("Status Board")).toBeVisible();
+    await expect(page.getByText("News Brief")).toBeVisible();
+
+    const statusFrame = page.frameLocator('iframe[title="Status Board"]');
+    await expect(statusFrame.locator("#lens-stage-root")).toBeVisible();
+    await expect(statusFrame.getByText("Realtime Agent")).toBeVisible();
+    await expect(statusFrame.getByText("Queue", { exact: true })).toBeVisible();
+
+    const accountFrame = page.frameLocator('iframe[title="Runtime Access"]');
+    await expect(accountFrame.getByText("Continue")).toBeVisible();
+
+    const comparisonFrame = page.frameLocator('iframe[title="Comparison"]');
+    await expect(comparisonFrame.getByText("46 tokens")).toBeVisible();
+
+    const statusSpecimen = page.locator(".specimen").filter({ hasText: "Status Board" }).first();
+    await statusSpecimen.getByRole("tab", { name: "Lightcode" }).click();
+    const editor = statusSpecimen.getByLabel("Status Board editable lightcode");
+    await expect(editor).toBeVisible();
+    await editor.fill(`0F|st=mono
+ 1M|Broken|bad indent`);
+    await statusSpecimen.getByRole("button", { name: "Render" }).click();
+    await expect(statusSpecimen.getByText("Render failed").first()).toBeVisible();
+    await expect(statusFrame.locator("[data-lens-render-failure]")).toBeVisible();
+    await expect(statusFrame.getByText("Previous UI preserved. Fix the lightcode and render again.")).toBeVisible();
+
+    await statusSpecimen.getByRole("tab", { name: "Lightcode" }).click();
+    await editor.fill(`0F|st=mono
+0V|Edited Surface|Manual lightcode edit
+1M|State|ok`);
+    await statusSpecimen.getByRole("button", { name: "Render" }).click();
+    await expect(statusFrame.getByText("Edited Surface")).toBeVisible();
+    await expect(statusFrame.locator("[data-lens-render-failure]")).toHaveCount(0);
+
+    expect(health.errors).toEqual([]);
+  });
+
+  test("renders the Next docs app routes and live demo", async ({ page }) => {
+    test.setTimeout(90_000);
+    const health = collectPageHealth(page);
+
+    await page.goto(siteOrigin);
+    await expect(page.getByRole("heading", { name: "Agents should emit UI intent, not frontend code.", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Home", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Specimens", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Demo", exact: true })).toBeVisible();
+    const header = page.getByRole("banner");
+    await expect(header.getByRole("link", { name: "npm", exact: true })).toHaveAttribute("href", "https://www.npmjs.com/package/@ardabot/lensui");
+    await expect(header.getByRole("link", { name: "GitHub", exact: true })).toHaveAttribute("href", "https://github.com/ardabotai/lensui");
+    await expect(page.getByText("npm install @ardabot/lensui")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "The agent contract.", exact: true })).toBeVisible();
+    const heroFrame = page.frameLocator('iframe[title="LensUI homepage runtime preview"]');
+    await expect(heroFrame.locator("#lens-stage-root")).toBeVisible();
+    await expect(heroFrame.getByText("Runtime Pulse")).toBeVisible();
+
+    await page.getByRole("link", { name: "Specimens", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Maximum visual range, minimum model syntax.", exact: true })).toBeVisible();
+
+    const bridgeServer = startLensBridge({ port: 0 });
+    await once(bridgeServer, "listening");
+    const bridgeAddress = bridgeServer.address();
+    if (!bridgeAddress || typeof bridgeAddress === "string") throw new Error("bridge did not bind to a TCP port");
+    const bridgeOrigin = `http://127.0.0.1:${bridgeAddress.port}`;
+
+    try {
+      await page.goto(`${siteOrigin}/demo?bridge=${encodeURIComponent(bridgeOrigin)}`);
+      await expect(page.getByRole("heading", { name: "Live data, agent targets, generative surfaces.", exact: true })).toBeVisible();
+      let demoFrame = page.frameLocator('iframe[title="LensUI demo render"]');
+      await expect(demoFrame.locator("#lens-stage-root")).toBeVisible();
+      await expect(demoFrame.locator("#lens-stage-root")).toHaveAttribute("data-lens-sizing", "auto");
+      await expect(demoFrame.locator("#lens-stage-root")).toHaveAttribute("data-lens-flow", "auto");
+      await expect(demoFrame.getByText("Live Runtime")).toBeVisible();
+      await expect(demoFrame.locator("[data-lens-scene]")).toHaveAttribute("data-scene-kind", "shader");
+      await page.waitForFunction(() => {
+        const iframe = document.querySelector<HTMLIFrameElement>('iframe[title="LensUI demo render"]');
+        return Boolean(iframe && iframe.getBoundingClientRect().height > 560);
+      });
+      const playgroundLayout = await page.evaluate(() => {
+        const iframe = document.querySelector<HTMLIFrameElement>('iframe[title="LensUI demo render"]');
+        const footer = document.querySelector<HTMLElement>(".demo-stage .lens-playground-footer");
+        const iframeRect = iframe?.getBoundingClientRect();
+        const footerRect = footer?.getBoundingClientRect();
+        return {
+          iframeHeight: iframeRect?.height ?? 0,
+          iframeBottom: iframeRect?.bottom ?? 0,
+          footerTop: footerRect?.top ?? 0
+        };
+      });
+      expect(playgroundLayout.iframeHeight).toBeGreaterThan(560);
+      expect(playgroundLayout.footerTop).toBeGreaterThanOrEqual(playgroundLayout.iframeBottom - 1);
+      await expect(demoFrame.getByText("p95")).toBeVisible();
+      const firstLiveText = await demoFrame.locator("body").innerText();
+      await expect.poll(async () => page.frameLocator('iframe[title="LensUI demo render"]').locator("body").innerText(), { timeout: 8000 }).not.toBe(firstLiveText);
+      const secondLiveText = await demoFrame.locator("body").innerText();
+      expect(secondLiveText).not.toBe(firstLiveText);
+      await expect.poll(async () => page.frameLocator('iframe[title="LensUI demo render"]').locator("body").innerText(), { timeout: 8000 }).not.toBe(secondLiveText);
+      const thirdLiveText = await demoFrame.locator("body").innerText();
+      expect(thirdLiveText).not.toBe(secondLiveText);
+      await iframeScreenshot(page);
+
+      await expect(page.locator(".bridge-pill.connected")).toBeVisible();
+      const bridgeTarget = await page.locator(".agent-bridge").evaluate((element) => ({
+        lensID: element.getAttribute("data-lens-id") ?? "",
+        token: element.getAttribute("data-lens-token") ?? ""
+      }));
+      const helloResponse = await fetch(`${bridgeOrigin}/lens/${bridgeTarget.lensID}/render`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${bridgeTarget.token}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({ lightcode: "0F|st=mono\n0V|Hello from your agent|Live target\n1M|Bridge|connected|local" })
+      });
+      expect(helloResponse.status).toBe(200);
+      await expect(demoFrame.getByText("Hello from your agent")).toBeVisible();
+
+      await page.getByRole("button", { name: "gallery" }).click();
+      demoFrame = page.frameLocator('iframe[title="LensUI demo render"]');
+      await expect(demoFrame.getByText("Media Mosaic")).toBeVisible();
+
+      await page.getByRole("button", { name: "animated art" }).click();
+      demoFrame = page.frameLocator('iframe[title="LensUI demo render"]');
+      await expect(demoFrame.getByText("Generative Surface")).toBeVisible();
+      await expect(demoFrame.locator("[data-vector-kind]")).toHaveAttribute("data-vector-kind", "flow");
+    } finally {
+      await closeServerNow(bridgeServer);
+    }
+    expect(health.errors).toEqual([]);
+  });
+
+  test("keeps docs homepage and LensUI iframe previews inside a phone viewport", async ({ page }) => {
+    const health = collectPageHealth(page);
+
+    await page.setViewportSize({ width: 390, height: 1200 });
+    await page.goto(siteOrigin);
+    await expect(page.getByRole("heading", { name: "Agents should emit UI intent, not frontend code.", exact: true })).toBeVisible();
+
+    const docWidth = await page.evaluate(() => document.documentElement.clientWidth);
+    const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+    expect(scrollWidth).toBeLessThanOrEqual(docWidth + 1);
+
+    const heroFrame = page.frameLocator('iframe[title="LensUI homepage runtime preview"]');
+    await expect(heroFrame.locator("#lens-stage-root")).toHaveAttribute("data-lens-size", "narrow");
+    await expect(heroFrame.locator("[data-lens-adaptive-grid]").first()).toHaveAttribute("data-lens-cols", "1");
+    expect(health.errors).toEqual([]);
+  });
+});
+
+function contentType(file: string): string {
+  switch (path.extname(file)) {
+    case ".html": return "text/html; charset=utf-8";
+    case ".js": return "application/javascript; charset=utf-8";
+    case ".css": return "text/css; charset=utf-8";
+    case ".svg": return "image/svg+xml";
+    case ".json": return "application/json; charset=utf-8";
+    default: return "application/octet-stream";
+  }
+}
+
+function collectPageHealth(page: Page): { errors: string[] } {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => {
+    errors.push(error.message);
+  });
+  return { errors };
+}
+
+async function waitForLensStage(page: Page): Promise<void> {
+  await page.waitForFunction(() => typeof window.lensStage === "object");
+  await expect(page.locator("#lens-stage-mount")).toBeAttached();
+}
+
+async function renderAndCaptureSize(page: Page, lightcode: string): Promise<{
+  sizing: string;
+  flow: string;
+  contentHeight: number;
+  overflowY: boolean;
+}> {
+  return page.evaluate((nextLightcode) => {
+    return new Promise<{ sizing: string; flow: string; contentHeight: number; overflowY: boolean }>((resolve) => {
+      const mount = document.querySelector<HTMLElement>("#lens-stage-mount");
+      mount?.addEventListener("lensui:size", (event) => {
+        resolve((event as CustomEvent<{ sizing: string; flow: string; contentHeight: number; overflowY: boolean }>).detail);
+      }, { once: true });
+      window.lensStage!.render(nextLightcode);
+    });
+  }, lightcode);
+}
+
+async function stageOverflowReport(page: Page): Promise<{
+  rootWidth: number;
+  scrollWidth: number;
+  gridCols: string[];
+  offenders: Array<{ tag: string; component: string | null; text: string; left: number; right: number }>;
+}> {
+  return page.evaluate(() => {
+    const root = document.querySelector<HTMLElement>("#lens-stage-root");
+    if (!root) return { rootWidth: 0, scrollWidth: 0, gridCols: [], offenders: [] };
+    const rootRect = root.getBoundingClientRect();
+    const offenders = Array.from(root.querySelectorAll<HTMLElement>("#lens-stage-frame, #lens-stage-frame *"))
+      .filter((element) => {
+        const rect = element.getBoundingClientRect();
+        if (rect.width < 1 || rect.height < 1) return false;
+        return rect.left < rootRect.left - 1 || rect.right > rootRect.right + 1;
+      })
+      .slice(0, 8)
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          tag: element.tagName.toLowerCase(),
+          component: element.getAttribute("data-lens-component"),
+          text: (element.textContent ?? "").trim().slice(0, 48),
+          left: Math.round(rect.left),
+          right: Math.round(rect.right)
+        };
+      });
+    return {
+      rootWidth: root.clientWidth,
+      scrollWidth: root.scrollWidth,
+      gridCols: Array.from(root.querySelectorAll<HTMLElement>("[data-lens-adaptive-grid]")).map((element) => element.dataset.lensCols ?? ""),
+      offenders
+    };
+  });
+}
+
+async function iframeScreenshot(page: Page): Promise<Buffer> {
+  const iframe = page.locator('iframe[title="LensUI demo render"]');
+  await expect(iframe).toBeVisible();
+  const box = await iframe.boundingBox();
+  if (!box) throw new Error("LensUI demo iframe is not visible.");
+  return page.screenshot({
+    animations: "disabled",
+    clip: {
+      x: Math.max(0, Math.floor(box.x)),
+      y: Math.max(0, Math.floor(box.y)),
+      width: Math.max(1, Math.ceil(box.width)),
+      height: Math.max(1, Math.min(720, Math.ceil(box.height)))
+    }
+  });
+}
+
+async function closeServerNow(server: Server): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+    server.closeAllConnections?.();
+  });
+}
+
+async function stageDimensionReport(page: Page): Promise<{
+  rootWidth: number;
+  rootHeight: number;
+  scrollWidth: number;
+  viewportWidth: number;
+  chartHeight: number;
+}> {
+  return page.evaluate(() => {
+    const root = document.querySelector<HTMLElement>("#lens-stage-root");
+    const chart = document.querySelector<SVGElement>("[data-lens-role='chartData']");
+    return {
+      rootWidth: root?.clientWidth ?? 0,
+      rootHeight: root?.clientHeight ?? 0,
+      scrollWidth: root?.scrollWidth ?? 0,
+      viewportWidth: window.innerWidth,
+      chartHeight: chart?.getBoundingClientRect().height ?? 0
+    };
+  });
+}

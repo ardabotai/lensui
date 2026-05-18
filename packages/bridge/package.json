@@ -1,0 +1,43 @@
+{
+  "name": "@lensui/bridge",
+  "version": "0.1.0",
+  "description": "Local bridge for sending LensUI lightcode from coding agents into browser-hosted LensUI containers.",
+  "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "ArdaBot, Inc.",
+    "url": "https://www.ardabot.ai/"
+  },
+  "homepage": "https://lensui.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ardabotai/lensui.git",
+    "directory": "packages/bridge"
+  },
+  "bugs": {
+    "url": "https://github.com/ardabotai/lensui/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "lensui-bridge": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "skills",
+    "src/index.ts"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-skill.mjs"
+  }
+}

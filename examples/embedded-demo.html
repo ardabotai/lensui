@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LensUI Embedded Demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0b0d10;
+      color: #eef2f7;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 10% 10%, rgb(58 187 255 / 0.14), transparent 30%),
+        radial-gradient(circle at 90% 20%, rgb(91 232 168 / 0.11), transparent 28%),
+        #0b0d10;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: minmax(260px, 360px) 1fr;
+      gap: 18px;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    aside,
+    .stage-shell {
+      border: 1px solid rgb(255 255 255 / 0.09);
+      background: rgb(14 18 24 / 0.78);
+      box-shadow: 0 24px 80px rgb(0 0 0 / 0.28);
+    }
+
+    aside {
+      padding: 22px;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(28px, 4vw, 46px);
+      line-height: 0.95;
+      letter-spacing: 0;
+    }
+
+    p {
+      color: #aab5c3;
+      line-height: 1.6;
+    }
+
+    button {
+      display: block;
+      width: 100%;
+      margin-top: 10px;
+      border: 0;
+      border-radius: 8px;
+      padding: 11px 14px;
+      background: #7dd3fc;
+      color: #071018;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: #1f2937;
+      color: #eef2f7;
+      border: 1px solid rgb(255 255 255 / 0.1);
+    }
+
+    .stage-shell {
+      min-height: 640px;
+      overflow: hidden;
+    }
+
+    #lens-stage-mount {
+      width: 100%;
+      height: 100%;
+      min-height: 640px;
+    }
+
+    @media (max-width: 820px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <aside>
+      <h1>LensUI inside an app panel</h1>
+      <p>This demo mounts LensUI into one region of a normal page, registers a compact alias component, applies command streams, and updates a data source.</p>
+      <button id="render">Render lightcode</button>
+      <button id="patch" class="secondary">Apply patch command</button>
+      <button id="source" class="secondary">Update data source</button>
+    </aside>
+    <section class="stage-shell">
+      <div id="lens-stage-mount"></div>
+    </section>
+  </main>
+
+  <script src="../dist/lensui.stage.global.js"></script>
+  <script>
+    function initialRender() {
+      window.lensStage.apply(`!
+@!|KPI|a|g
+0@|KPI|M|tone=success
+.
+Y!|demo|g
+0F|f=mono|d=compact|r=2
+0Y|panel|bg=card|bd=fg/24|p=4
+.
+R
+0DS|news|https://example.com/news.json|ttl=600|mode=poll
+0F|st=demo
+0V|Embedded Brief|Runtime controlled view
+1G|auto|min=180|max=3
+2KPI|Latency|182|ms|s=panel
+2H|line|3,8,6,12,9|trend
+1M|Headline|$news.headline|source
+1NL|Latest||$news.items
+.`);
+    }
+
+    function bootDemo() {
+      const renderButton = document.getElementById("render");
+      const patchButton = document.getElementById("patch");
+      const sourceButton = document.getElementById("source");
+
+      renderButton.addEventListener("click", initialRender);
+      patchButton.addEventListener("click", () => {
+        window.lensStage.apply(`!
+^|5|1
+2KPI|Latency|96|ms
+.`);
+      });
+      sourceButton.addEventListener("click", () => {
+        window.lensStage.setSource("news", {
+          headline: "Renderer updated without a full rebuild",
+          items: "Live source cache,Runtime update;Component alias,Registered in stream"
+        });
+      });
+
+      initialRender();
+    }
+
+    if (window.lensStage) {
+      bootDemo();
+    } else {
+      document.addEventListener("DOMContentLoaded", () => requestAnimationFrame(bootDemo), { once: true });
+    }
+  </script>
+</body>
+</html>

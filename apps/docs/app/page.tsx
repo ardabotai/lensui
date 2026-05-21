@@ -87,6 +87,16 @@ export default function HomePage() {
           </div>
         </section>
 
+        <section className="runtime-section wide-shell" id="demo">
+          <div className="runtime-intro">
+            <h2>Connect your agent to this surface.</h2>
+            <p>
+              Copy the generated instructions into your local agent, then watch it stream lightcode into the blank target below without a rebuild loop.
+            </p>
+          </div>
+          <DemoStage />
+        </section>
+
         <section className="shift-section shell" id="why">
           <div className="section-copy">
             <h2>The old loop generates code. LensUI grows a live interface.</h2>
@@ -174,16 +184,6 @@ export default function HomePage() {
               <span>Keep secrets, billing, auth, and privileged tools out of frontend code. Let raw components draw and interact; route sensitive effects through host-owned capabilities.</span>
             </article>
           </div>
-        </section>
-
-        <section className="runtime-section wide-shell" id="demo">
-          <div className="runtime-intro">
-            <h2>Connect your agent to this surface.</h2>
-            <p>
-              Copy the generated instructions into your local agent, then watch it stream lightcode into the blank target below without a rebuild loop.
-            </p>
-          </div>
-          <DemoStage />
         </section>
 
         <section className="install-section shell" id="install">

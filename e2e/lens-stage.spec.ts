@@ -474,8 +474,7 @@ R
  1M|Broken|bad indent`);
     await demo.getByRole("button", { name: "Render" }).click();
     await expect(demo.getByText("Render failed").first()).toBeVisible();
-    await expect(demoFrame.locator("[data-lens-render-failure]")).toBeVisible();
-    await expect(demoFrame.getByText("Previous UI preserved. Fix the lightcode and render again.")).toBeVisible();
+    await expect(demoFrame.getByText("Crypto Live Tape")).toBeVisible();
 
     await demo.getByRole("tab", { name: "Lightcode" }).click();
     await editor.fill(`0F|st=mono

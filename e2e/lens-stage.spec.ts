@@ -571,6 +571,7 @@ R
     await expect(header.getByRole("link", { name: "GitHub", exact: true })).toHaveAttribute("href", "https://github.com/ardabotai/lensui");
     await expect(page.getByText("npm install @ardabot/lensui")).toBeVisible();
     await expect(page.getByRole("heading", { name: "The old loop generates code. LensUI grows a live interface.", exact: true })).toBeVisible();
+    await expect(page.getByText("Live Forecast", { exact: true })).toHaveCount(0);
     const heroFrame = page.frameLocator('iframe[title="LensUI live runtime preview"]');
     await expect(heroFrame.locator("#lens-stage-root")).toBeVisible();
     await expect(heroFrame.getByText("Crypto Live Tape")).toBeVisible();

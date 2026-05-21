@@ -253,7 +253,6 @@ p {
 .demo-panel,
 .demo-stage,
 .install-grid pre,
-.closing,
 .lens-playground,
 .agent-bridge {
   border: 1px solid var(--line);
@@ -297,8 +296,7 @@ p {
   box-shadow: var(--shadow);
 }
 
-.hero-stage-card::before,
-.closing::before {
+.hero-stage-card::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -401,8 +399,7 @@ pre {
 .proof-section,
 .safety-section,
 .runtime-section,
-.install-section,
-.closing {
+.install-section {
   padding: 72px 0;
 }
 
@@ -997,12 +994,6 @@ pre {
   padding: 18px;
 }
 
-.closing {
-  position: relative;
-  overflow: hidden;
-  padding: 0;
-}
-
 .site-footer {
   border-top: 1px solid var(--line);
   padding: 34px 0 44px;
@@ -1091,8 +1082,7 @@ pre {
   .proof-section,
   .safety-section,
   .runtime-section,
-  .install-section,
-  .closing {
+  .install-section {
     padding: 48px 0;
   }
 

@@ -9,14 +9,6 @@ import { heroMarketLightcode, liveMarketScript } from "../lib/specimens";
 
 const proofCase = benchmarkResults[0];
 
-const comparisonLightcode = `0F|st=mono|d=compact
-0V|Live Forecast|Generated after the page loaded
-1G|auto|min=170|max=3|mh=120
-2M|Bundle delta|0kb|no rebuild
-2M|Patch|1 line|validated
-2M|Rollback|ready|on failure
-1CP|Old loop vs live surface|Same request, different path|items=Generated code^Build + deploy^AI writes frontend code that still has to ship before users see it^warning;LensUI lightcode^Render now^Agent streams semantic UI into the mounted runtime^success`;
-
 const installCode = `npm install @ardabot/lensui
 npx lensui skill
 npx lensui bridge --port 5743`;
@@ -209,14 +201,6 @@ export default function HomePage() {
             <a className="button primary" href={npmURL} rel="noreferrer" target="_blank">Open npm</a>
             <a className="button source" href={githubURL} rel="noreferrer" target="_blank"><GitHubIcon /> GitHub repo</a>
           </div>
-        </section>
-
-        <section className="closing shell">
-          <LensUIFrame
-            height={360}
-            lightcode={comparisonLightcode}
-            title="LensUI old loop comparison preview"
-          />
         </section>
       </main>
       <Footer />

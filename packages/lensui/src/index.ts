@@ -9,6 +9,7 @@ export type {
   LensComponentPolicy,
   LensRegistryPersistenceOptions,
   LensRegistryStorage,
+  LensStageReadKind,
   LensStageRuntime,
   LensStageRuntimeOptions,
   LensStageSizeDetail,
@@ -25,6 +26,7 @@ export {
 } from "../../mcp-server/src/index";
 export type {
   LensClientBinding,
+  LensReadKind,
   LensSessionContext,
   LensSessionResolver
 } from "../../mcp-server/src/index";

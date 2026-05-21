@@ -115,10 +115,10 @@ export const heroMarketLightcode = `0DS|market|wss://ws-feed.exchange.coinbase.c
 0F|st=studio|d=compact
 0Y|hot|bg=card|bd=fg/24|p=4|r=2
 0V|Crypto Live Tape|Coinbase public ticker
-1G|auto|min=190|max=2|mh=110
+1G|auto|min=170|max=3|mh=104
 2M|BTC/USD|$market.btc|$market.btcMove|tone=$market.btcTone|flash=$market.btcFlash|s=hot
 2M|ETH/USD|$market.eth|$market.ethMove|tone=$market.ethTone|flash=$market.ethFlash|s=hot
-1ST|Feed|$market.status|items=$market.steps|hide=narrow,portrait`;
+2M|Feed|$market.status|$market.clock|tone=success|s=hot|hide=narrow,portrait`;
 
 export const liveMarketScript = `
     if (window.__lensMarketSocket) {

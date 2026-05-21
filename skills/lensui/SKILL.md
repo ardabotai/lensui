@@ -17,7 +17,7 @@ LensUI is a token-efficient UI runtime for agents. Generate semantic lightcode p
 5. Prefer short semantic built-ins, compact `items=` rows, and compact `0Y` style recipes.
 6. Use saved style packs for durable art direction. Save reusable components when built-ins cannot express the UI compactly, then instantiate them by short name in later turns.
 7. For live values, render stable bindings once, then update source snapshots. Do not resend the whole stage just to tick a value or chart.
-8. Treat LensUI as screen-size and aspect-ratio agnostic. Use semantic adaptive containers and never depend on a specific phone, laptop, or TV viewport.
+8. Treat LensUI as screen-size and aspect-ratio agnostic. Use semantic adaptive containers and never depend on a specific phone, laptop, or TV viewport. When a host exposes `lens_read layout` or `stage.read("layout")`, read it before dense renders or after overflow and adapt to the returned width, height, aspect, size, and flow.
 9. If a parse/render error returns, fix the invalid line or depth sequence and retry once.
 
 ## Lightcode Rules
@@ -35,6 +35,7 @@ LensUI is a token-efficient UI runtime for agents. Generate semantic lightcode p
 - Use `$id.path` only for known data sources. Literal dollar amounts like `$28.40` are not bindings.
 - Live data uses the same binding syntax. Hosts push updates with `setSource(id, payload)`; bound metrics, rows, charts, progress, and status components update in place.
 - Containers are adaptive by default. Prefer `G|auto|min=160-240|max=2-4` for repeated items; the runtime will collapse columns by actual container width and aspect ratio. Host apps choose `data-lens-sizing="stage"` for fixed stages with scroll fallback, or `data-lens-sizing="auto"` for embeds that resize around the rendered content.
+- If available, `lens_read layout` returns the actual container contract: `width`, `height`, `contentWidth`, `contentHeight`, `aspect`, `size`, `flow`, `scale`, `overflowX`, and `overflowY`. Use it to choose fewer columns, shorter charts, hidden optional panels, or multiple pages.
 - Components can opt into runtime visibility with `show=` and `hide=` tokens such as `show=wide`, `show=narrow,portrait`, `hide=narrow`, or `hide=portrait`. Use this for genuinely optional detail, not for primary content.
 
 Minimal render:
@@ -233,5 +234,5 @@ render("0F|st=mono-compact\n0V|Runtime\n1N|Continue|s=cta")
 - If depth jumps more than one level, lower the offending depth or add the missing parent.
 - If a component is unknown, replace it with a built-in or define an alias at depth `0`.
 - If a binding references an unknown data source, add a `0DS` line or replace the binding with literal text.
-- If layout overflows, first use semantic adaptive containers (`1G|auto`, compact rows, built-in media/chart heights). Fixed stage hosts can scroll on overflow and auto-sized embed hosts can grow, but the lightcode should still avoid avoidable width overflow.
+- If layout overflows, read `layout` when available, then use semantic adaptive containers (`1G|auto`, compact rows, built-in media/chart heights). Fixed stage hosts can scroll on overflow and auto-sized embed hosts can grow, but the lightcode should still avoid avoidable width overflow.
 - If media is unavailable, use `media_search` or render a semantic `VV`/`X` alternative.

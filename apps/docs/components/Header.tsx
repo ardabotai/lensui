@@ -4,8 +4,7 @@ import { githubURL, npmURL } from "../lib/links";
 
 const navItems = [
   { href: "#why", label: "Why" },
-  { href: "#demo", label: "Live demo" },
-  { href: "#bridge", label: "Agent bridge" },
+  { href: "#demo", label: "Live surface" },
   { href: "#install", label: "Install" }
 ];
 

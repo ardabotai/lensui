@@ -25,7 +25,7 @@ type LensStageHandle = {
   render(lightcode: string, components?: unknown[]): LensApplyResult;
   apply(commandStream: string): LensApplyResult;
   setSource(id: string, payload: unknown): boolean;
-  read(kind: "lightcode" | "components" | "styles" | "registry" | "metadata" | "status"): unknown;
+  read(kind: "lightcode" | "components" | "styles" | "registry" | "metadata" | "status" | "layout"): unknown;
 };
 
 declare global {
@@ -244,6 +244,14 @@ test.describe("LensUI browser stage runtime", () => {
     await expect(page.locator("#lens-stage-root")).toHaveAttribute("data-lens-container-height", "620");
     await expect(page.locator("#lens-stage-root")).toHaveAttribute("data-lens-aspect", "portrait");
     await expect(page.locator("#lens-stage-root")).toHaveAttribute("data-lens-flow", "scroll");
+    expect(await page.evaluate(() => window.lensStage!.read("layout"))).toMatchObject({
+      sizing: "stage",
+      flow: "scroll",
+      aspect: "portrait",
+      size: "narrow",
+      width: 320,
+      height: 620
+    });
 
     let dimensions = await stageDimensionReport(page);
     expect(dimensions.rootWidth).toBe(320);
@@ -514,7 +522,7 @@ R
     const health = collectPageHealth(page);
 
     await page.goto(siteOrigin);
-    await expect(page.getByRole("heading", { name: "Try the running surface.", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Connect your agent to this surface.", exact: true })).toBeVisible();
 
     const demo = page.locator(".demo-stage .lens-playground").first();
     const demoFrame = page.frameLocator('iframe[title="LensUI demo render"]');
@@ -531,6 +539,17 @@ R
     expect(instructions).toContain("npx -y --package @ardabot/lensui@latest lensui skill");
     expect(instructions).toContain("npx -y --package @ardabot/lensui@latest lensui bridge");
     expect(instructions).toContain("/render");
+    const surfaceOrder = await page.evaluate(() => {
+      const bridge = document.querySelector<HTMLElement>(".agent-surface .agent-bridge");
+      const iframe = document.querySelector<HTMLIFrameElement>(".agent-surface iframe");
+      const bridgeRect = bridge?.getBoundingClientRect();
+      const iframeRect = iframe?.getBoundingClientRect();
+      return {
+        bridgeBottom: bridgeRect?.bottom ?? 0,
+        iframeTop: iframeRect?.top ?? 0
+      };
+    });
+    expect(surfaceOrder.iframeTop).toBeGreaterThanOrEqual(surfaceOrder.bridgeBottom - 1);
     await expect(demoFrame.locator("[data-lens-render-failure]")).toHaveCount(0);
 
     expect(health.errors).toEqual([]);
@@ -544,8 +563,8 @@ R
     await page.goto(siteOrigin);
     await expect(page.getByRole("heading", { name: "Live UI generation, already running.", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Why", exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Live demo", exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Agent bridge", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Live surface", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Agent bridge", exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Install", exact: true })).toBeVisible();
     const header = page.getByRole("banner");
     await expect(header.getByRole("link", { name: "npm", exact: true })).toHaveAttribute("href", "https://www.npmjs.com/package/@ardabot/lensui");
@@ -565,7 +584,7 @@ R
 
     try {
       await page.goto(`${siteOrigin}?bridge=${encodeURIComponent(bridgeOrigin)}`);
-      await expect(page.getByRole("heading", { name: "Try the running surface.", exact: true })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Connect your agent to this surface.", exact: true })).toBeVisible();
       let demoFrame = page.frameLocator('iframe[title="LensUI demo render"]');
       await expect(demoFrame.locator("#lens-stage-root")).toBeVisible();
       await expect(demoFrame.locator("#lens-stage-root")).toHaveAttribute("data-lens-sizing", "auto");
@@ -582,12 +601,12 @@ R
         const bridgeRect = bridge?.getBoundingClientRect();
         return {
           iframeHeight: iframeRect?.height ?? 0,
-          iframeBottom: iframeRect?.bottom ?? 0,
-          bridgeTop: bridgeRect?.top ?? 0
+          iframeTop: iframeRect?.top ?? 0,
+          bridgeBottom: bridgeRect?.bottom ?? 0
         };
       });
       expect(playgroundLayout.iframeHeight).toBe(560);
-      expect(playgroundLayout.bridgeTop).toBeGreaterThanOrEqual(playgroundLayout.iframeBottom - 1);
+      expect(playgroundLayout.iframeTop).toBeGreaterThanOrEqual(playgroundLayout.bridgeBottom - 1);
       await expect(page.locator(".demo-stage .lens-live-stream")).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Connect bridge" })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Copy bridge command" })).toHaveCount(0);

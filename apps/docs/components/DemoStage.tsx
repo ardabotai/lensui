@@ -15,7 +15,8 @@ export function DemoStage() {
   const handleRender = useCallback((render: ExternalRender) => setExternalRender(render), []);
 
   return (
-    <div className="demo-layout agent-target-layout">
+    <div className="agent-surface">
+      <AgentBridgePanel onApply={handleApply} onRender={handleRender} />
       <section className="demo-stage agent-target-stage" aria-label="LensUI live agent target">
         <InteractiveLensUIDemo
           autoResize={false}
@@ -27,7 +28,6 @@ export function DemoStage() {
           title="LensUI demo render"
         />
       </section>
-      <AgentBridgePanel onApply={handleApply} onRender={handleRender} />
     </div>
   );
 }

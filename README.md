@@ -149,7 +149,7 @@ Runtime sizing is host-declared on the mount element:
 <div id="lens-stage-mount" data-lens-sizing="auto"></div>
 ```
 
-After each render, source update, or resize, the HTML runtime dispatches a bubbling `lensui:size` event from the mount. Hosts can use `detail.contentHeight` and `detail.contentWidth` to resize iframes or native containers:
+After each render, source update, or resize, the HTML runtime dispatches a bubbling `lensui:size` event from the mount. Hosts can use `detail.contentHeight` and `detail.contentWidth` to resize iframes or native containers. Agents and MCP bindings can also ask the runtime for the latest snapshot with `read("layout")` before sending a dense render:
 
 ```ts
 root.addEventListener("lensui:size", (event) => {
@@ -157,6 +157,8 @@ root.addEventListener("lensui:size", (event) => {
   if (sizing === "auto") iframe.style.height = `${contentHeight}px`;
   console.debug("LensUI layout", flow);
 });
+
+const layout = window.lensStage.read("layout");
 ```
 
 The global runtime API:
@@ -174,7 +176,7 @@ interface LensStageRuntime {
   deleteStyle(name: string): LensApplyResult;
   setDefaultStyle(name?: string): LensApplyResult;
   setSource(id: string, payload: unknown): boolean;
-  read(kind: "lightcode" | "components" | "styles" | "registry" | "metadata" | "status"): unknown;
+  read(kind: "lightcode" | "components" | "styles" | "registry" | "metadata" | "status" | "layout"): unknown;
   loadRegistry(registry: LensUISavedRegistry): LensApplyResult;
   enablePersistence(options?: LensRegistryPersistenceOptions): LensStageRuntime;
   persistRegistry(options?: LensRegistryPersistenceOptions): void;

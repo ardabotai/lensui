@@ -62,11 +62,11 @@ await build({
 await writeFile(resolve(outdir, "index.d.ts"), [
   'export * from "./core.js";',
   'export { BrowserLensStageRuntime, LensHTMLRenderer, createPersistentStageRuntime, createStageRuntime } from "./html.js";',
-  'export type { LensComponentPolicy, LensRegistryPersistenceOptions, LensRegistryStorage, LensStageRuntime, LensStageRuntimeOptions, LensStageSizeDetail, LensStageSizingMode } from "./html.js";',
+  'export type { LensComponentPolicy, LensRegistryPersistenceOptions, LensRegistryStorage, LensStageReadKind, LensStageRuntime, LensStageRuntimeOptions, LensStageSizeDetail, LensStageSizingMode } from "./html.js";',
   'export { LensClientConnection } from "./client.js";',
   'export type { LensClientOptions } from "./client.js";',
   'export { LensMCPBridge } from "./mcp-server.js";',
-  'export type { LensClientBinding, LensSessionContext, LensSessionResolver } from "./mcp-server.js";',
+  'export type { LensClientBinding, LensReadKind, LensSessionContext, LensSessionResolver } from "./mcp-server.js";',
   'export { LensBYOKRuntime } from "./byok.js";',
   'export type { LensAgentRuntime, LensInferenceConfig, LensModelProvider } from "./byok.js";',
   ""

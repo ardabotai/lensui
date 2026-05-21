@@ -2,7 +2,6 @@ import { DemoStage } from "../components/DemoStage";
 import { Footer } from "../components/Footer";
 import { GitHubIcon } from "../components/GitHubIcon";
 import { Header } from "../components/Header";
-import { InteractiveLensUIDemo } from "../components/InteractiveLensUIDemo";
 import { LensUIFrame } from "../components/LensUIFrame";
 import { benchmarkResults, benchmarkSummary } from "../lib/benchmarks";
 import { githubURL, npmURL } from "../lib/links";
@@ -17,11 +16,6 @@ const comparisonLightcode = `0F|st=mono|d=compact
 2M|Patch|1 line|validated
 2M|Rollback|ready|on failure
 1CP|Old loop vs live surface|Same request, different path|items=Generated code^Build + deploy^AI writes frontend code that still has to ship before users see it^warning;LensUI lightcode^Render now^Agent streams semantic UI into the mounted runtime^success`;
-
-const bridgeLightcode = `0F|st=terminal
-0V|Agent Bridge|Local tool to live browser target
-1ST|First render|Hello flow|items=Install skill^done^npx reads the LensUI skill;Start bridge^active^Local server opens a scoped target;Render lightcode^wait^Browser updates in place
-1T|Paste the generated instructions into a coding agent. It can render into this page while you watch.|muted=true`;
 
 const installCode = `npm install @ardabot/lensui
 npx lensui skill
@@ -60,8 +54,8 @@ export default function HomePage() {
               LensUI lets agents generate interfaces inside a mounted browser surface, then save the useful pieces as reusable components. Built-ins are just the starter grammar; your agent grows the UI vocabulary while the app is running.
             </p>
             <div className="actions">
-              <a className="button primary" href="#demo">Open live demo</a>
-              <a className="button accent" href="#bridge">Copy agent instructions</a>
+              <a className="button primary" href="#demo">Connect an agent</a>
+              <a className="button accent" href="#install">Install package</a>
               <a className="button source" href={githubURL} rel="noreferrer" target="_blank"><GitHubIcon /> GitHub</a>
             </div>
             <div className="hero-metrics" aria-label="LensUI live generation highlights">
@@ -145,9 +139,9 @@ export default function HomePage() {
 
         <section className="proof-section shell">
           <div className="section-copy compact">
-            <h2>Same idea, less payload.</h2>
+            <h2>Why stream lightcode instead of HTML/React?</h2>
             <p>
-              Lightcode is not a hand-authored replacement for HTML. It is a model-facing protocol for live UI intent: compact, patchable, and renderer-owned.
+              HTML and React make an agent describe implementation details. Lightcode lets it send compact UI intent to a live renderer that already knows how to lay out, patch, persist, and update the surface.
             </p>
           </div>
           <div className="token-proof" aria-label="React, HTML, and LensUI payload comparison">
@@ -192,27 +186,12 @@ export default function HomePage() {
 
         <section className="runtime-section wide-shell" id="demo">
           <div className="runtime-intro">
-            <h2>Try the running surface.</h2>
+            <h2>Connect your agent to this surface.</h2>
             <p>
-              Copy the generated instructions into your local agent, then watch it stream lightcode into a blank browser target without a rebuild loop.
+              Copy the generated instructions into your local agent, then watch it stream lightcode into the blank target below without a rebuild loop.
             </p>
           </div>
           <DemoStage />
-        </section>
-
-        <section className="bridge-section shell" id="bridge">
-          <div className="section-copy compact">
-            <h2>Copy instructions. Let an agent render here.</h2>
-            <p>
-              The demo creates a scoped LensID and token in your browser. Start the local bridge, paste the generated prompt into your agent, and it can stream lightcode into the live page.
-            </p>
-          </div>
-          <InteractiveLensUIDemo
-            className="bridge-preview"
-            height={360}
-            lightcode={bridgeLightcode}
-            title="LensUI bridge instruction preview"
-          />
         </section>
 
         <section className="install-section shell" id="install">

@@ -42,6 +42,8 @@ export interface LensStageRuntimeOptions {
   persistence?: LensRegistryPersistenceOptions | boolean;
 }
 
+export type LensStageReadKind = "lightcode" | "components" | "styles" | "registry" | "metadata" | "status" | "layout";
+
 export interface LensStageRuntime {
   render(lightcode: string, components?: LensComponentDefinition[], styles?: LightStylePackDefinition[], defaultStyle?: string): LensApplyResult;
   apply(commandStream: string): LensApplyResult;
@@ -54,7 +56,7 @@ export interface LensStageRuntime {
   deleteStyle(name: string): LensApplyResult;
   setDefaultStyle(name?: string): LensApplyResult;
   setSource(id: string, payload: unknown): boolean;
-  read(kind: "lightcode" | "components" | "styles" | "registry" | "metadata" | "status"): unknown;
+  read(kind: LensStageReadKind): unknown;
   validate(lightcode: string, components?: LensComponentDefinition[], styles?: LightStylePackDefinition[], defaultStyle?: string): LensApplyResult;
   loadRegistry(registry: LensUISavedRegistry): LensApplyResult;
   enablePersistence(options?: LensRegistryPersistenceOptions): LensStageRuntime;
@@ -662,7 +664,7 @@ export class BrowserLensStageRuntime implements LensStageRuntime {
     return result.ok;
   }
 
-  read(kind: "lightcode" | "components" | "styles" | "registry" | "metadata" | "status"): unknown {
+  read(kind: LensStageReadKind): unknown {
     switch (kind) {
       case "lightcode": return this.workspace.lightcode;
       case "components": return this.workspace.components;
@@ -670,6 +672,7 @@ export class BrowserLensStageRuntime implements LensStageRuntime {
       case "registry": return this.workspace.snapshotRegistry();
       case "metadata": return this.metadata;
       case "status": return { ok: true, lightcodeLength: this.workspace.lightcode.length, components: this.workspace.components.length, styles: this.workspace.styles.length, defaultStyle: this.workspace.defaultStyle ?? null };
+      case "layout": return stageLayoutSnapshot(this.root);
     }
   }
 
@@ -939,6 +942,52 @@ function fitStage(mount: HTMLElement): void {
 function lensSizingMode(mount: HTMLElement): LensStageSizingMode {
   const raw = (mount.dataset.lensSizing ?? mount.dataset.lensEmbed ?? "").toLowerCase();
   return raw === "auto" || raw === "content" ? "auto" : "stage";
+}
+
+function stageLayoutSnapshot(mount: HTMLElement): LensStageSizeDetail | null {
+  const stageRoot = mount.querySelector<HTMLElement>("#lens-stage-root");
+  const frame = mount.querySelector<HTMLElement>("#lens-stage-frame");
+  if (!stageRoot || !frame) return null;
+  const rootRect = stageRoot.getBoundingClientRect();
+  const sizing = stageRoot.dataset.lensSizing === "auto" ? "auto" : "stage";
+  const flow = readFlow(stageRoot.dataset.lensFlow);
+  const aspect = readAspect(stageRoot.dataset.lensAspect);
+  const size = readSize(stageRoot.dataset.lensSize);
+  const scale = readNumber(frame.dataset.lensScale, 1);
+  const width = readNumber(stageRoot.dataset.lensContainerWidth, Math.round(rootRect.width));
+  const height = readNumber(stageRoot.dataset.lensContainerHeight, Math.round(rootRect.height));
+  const contentWidth = readNumber(stageRoot.dataset.lensContentWidth, Math.ceil(frame.scrollWidth * scale));
+  const contentHeight = readNumber(stageRoot.dataset.lensContentHeight, Math.ceil(frame.scrollHeight * scale));
+  return {
+    sizing,
+    flow,
+    aspect,
+    size,
+    width,
+    height,
+    contentWidth,
+    contentHeight,
+    scale,
+    overflowX: contentWidth > width + 1,
+    overflowY: contentHeight > height + 1
+  };
+}
+
+function readNumber(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function readFlow(value: string | undefined): LensStageSizeDetail["flow"] {
+  return value === "scroll" || value === "auto" ? value : "fit";
+}
+
+function readAspect(value: string | undefined): LensStageSizeDetail["aspect"] {
+  return value === "portrait" || value === "wide" ? value : "balanced";
+}
+
+function readSize(value: string | undefined): LensStageSizeDetail["size"] {
+  return value === "narrow" || value === "compact" ? value : "wide";
 }
 
 function emitStageSize(mount: HTMLElement, detail: LensStageSizeDetail): void {

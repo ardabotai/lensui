@@ -561,7 +561,7 @@ R
 
     await mockCoinbaseMarketRoutes(page);
     await page.goto(siteOrigin);
-    await expect(page.getByRole("heading", { name: "Live UI generation, already running.", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Next-gen UI isn't using AI to generate code to ship to everybody. It's AI streaming UI to each user live.", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Why", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Live surface", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Agent bridge", exact: true })).toHaveCount(0);
@@ -663,7 +663,7 @@ R
     await page.setViewportSize({ width: 390, height: 1200 });
     await mockCoinbaseMarketRoutes(page);
     await page.goto(siteOrigin);
-    await expect(page.getByRole("heading", { name: "Live UI generation, already running.", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Next-gen UI isn't using AI to generate code to ship to everybody. It's AI streaming UI to each user live.", exact: true })).toBeVisible();
 
     const docWidth = await page.evaluate(() => document.documentElement.clientWidth);
     const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);

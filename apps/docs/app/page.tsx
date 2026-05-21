@@ -41,7 +41,7 @@ export default function HomePage() {
       <main>
         <section className="hero-shell shell" id="live">
           <div className="hero-copy">
-            <h1>Live UI generation, already running.</h1>
+            <h1>Next-gen UI isn't using AI to generate code to ship to everybody. It's AI streaming UI to each user live.</h1>
             <p className="lead">
               LensUI lets agents generate interfaces inside a mounted browser surface, then save the useful pieces as reusable components. Built-ins are just the starter grammar; your agent grows the UI vocabulary while the app is running.
             </p>

@@ -2,7 +2,7 @@
 
 LensUI is a token-efficient generative UI runtime for agents. It renders compact lightcode and command streams into live browser UI, while staying agnostic to voice, auth, billing, memory, model providers, and host capabilities.
 
-[Docs](https://lensui.vercel.app) · [GitHub](https://github.com/ardabotai/lensui) · [npm](https://www.npmjs.com/package/@ardabot/lensui)
+[Docs](https://lens.ardabot.ai) · [GitHub](https://github.com/ardabotai/lensui) · [npm](https://www.npmjs.com/package/@ardabot/lensui)
 
 The framework is designed for agents that should show visual answers without sending HTML, JSX, Tailwind classes, CSS, D3 calls, Three.js scenes, or arbitrary JavaScript on every turn. The agent sends semantic UI lightcode; the renderer owns the DOM, layout fitting, component lifecycle, media handling, and live source updates.
 

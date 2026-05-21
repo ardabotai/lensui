@@ -69,7 +69,7 @@ export function trackLensUIDocsEvent(event: string, properties: Record<string, u
 function analyticsEndpoint() {
   if (endpointEnv) return endpointEnv;
   if (typeof window === "undefined") return undefined;
-  return window.location.hostname === "lensui.vercel.app"
+  return window.location.hostname === "lens.ardabot.ai" || window.location.hostname === "lensui.vercel.app"
     ? "https://gateway.ardabot.ai/api/v1/analytics/events"
     : undefined;
 }

@@ -7,6 +7,7 @@ describe("@lensui/html", () => {
 
     expect(result.html).toContain("Ready");
     expect(result.html).toContain("Semantic lightcode");
+    expect(result.html).toContain(`data-scene-kind="pixel"`);
     expect(result.html).toContain(`data-lens-adaptive-grid`);
     expect(result.html).toContain(`data-min-cell-width="150"`);
     expect(result.html).toContain(`data-max-cols="3"`);
@@ -36,6 +37,16 @@ describe("@lensui/html", () => {
     expect(result.metadata.dataSources[0]?.id).toBe("news");
     expect(result.metadata.bindings.some((binding) => binding.sourceID === "news")).toBe(true);
     expect(result.theme.success).toEqual({ h: 120, s: 50, l: 50 });
+  });
+
+  it("lets explicit webview heights use more of the mounted stage without full-screen overlay", () => {
+    const result = new LensHTMLRenderer().render("0V|Art\n1WV|https://example.com|Example|height=620|id=art|caption=PROJECT Example ARTIST Test #1");
+
+    expect(result.html).toContain("calc(var(--lens-container-height, 720px) * 0.72)");
+    expect(result.html).toContain("620px");
+    expect(result.html).toContain('data-lens-webview-url="https://example.com"');
+    expect(result.html).toContain('data-lens-webview-caption="PROJECT Example ARTIST Test #1"');
+    expect(result.html).not.toContain("data-lens-style-css");
   });
 
   it("renders custom html components as raw HTML templates", () => {

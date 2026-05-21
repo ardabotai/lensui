@@ -72,6 +72,7 @@ export function AgentBridgePanel({
   const [lensID, setLensID] = useState("pending");
   const [token, setToken] = useState("pending");
   const [bridgeOrigin, setBridgeOrigin] = useState(defaultBridgeOrigin);
+  const [shouldConnect, setShouldConnect] = useState(false);
   const [status, setStatus] = useState<BridgeStatus>("idle");
   const [copied, setCopied] = useState("");
   const [messageCount, setMessageCount] = useState(0);
@@ -82,13 +83,15 @@ export function AgentBridgePanel({
     const customOrigin = new URLSearchParams(window.location.search).get("bridge");
     if (customOrigin?.startsWith("http://127.0.0.1:") || customOrigin?.startsWith("http://localhost:")) {
       setBridgeOrigin(customOrigin.replace(/\/$/, ""));
+      setShouldConnect(true);
     }
   }, []);
 
   const eventURL = useMemo(() => {
+    if (!shouldConnect) return "";
     if (lensID === "pending" || token === "pending") return "";
     return `${bridgeOrigin}/session/${lensID}/events?token=${token}`;
-  }, [lensID, token]);
+  }, [bridgeOrigin, lensID, shouldConnect, token]);
 
   const prompt = useMemo(() => agentInstructions(bridgeOrigin, lensID, token), [bridgeOrigin, lensID, token]);
   const bridgeCommand = `npx -y --package @ardabot/lensui@latest lensui bridge --port ${new URL(bridgeOrigin).port || "5743"}`;
@@ -150,6 +153,7 @@ export function AgentBridgePanel({
       </div>
 
       <div className="bridge-actions">
+        <button onClick={() => setShouldConnect(true)} type="button">Connect bridge</button>
         <button onClick={() => copyValue("bridge", bridgeCommand)} type="button">Copy bridge command</button>
         <button onClick={() => copyValue("hello", helloCommand)} type="button">Copy hello render</button>
         <button className="primary" onClick={() => copyValue("prompt", prompt)} type="button">Copy agent prompt</button>

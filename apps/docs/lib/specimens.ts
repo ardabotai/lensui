@@ -96,54 +96,135 @@ export function frameHTML(lightcode: string): string {
   return stageFrameHTML(lightcode);
 }
 
-export const liveDemoLightcode = `0DS|telemetry|https://timeapi.io/api/time/current/zone?timeZone=UTC|ttl=3|mode=poll
+export const liveMarketLightcode = `0DS|market|https://api.coinbase.com/v2/prices/BTC-USD/spot|ttl=8|mode=stream
 0F|st=studio
 0Y|hot|bg=card|bd=fg/24|p=4|r=2
-0V|Live Runtime|Source updates + animation
+0V|Crypto Live Tape|Coinbase public ticker
 1G|auto|min=170|max=3|mh=128
-2M|Latency|$telemetry.latency|p95|tone=success|s=hot
-2M|Token Save|$telemetry.tokens|vs React|s=hot
-2P|$telemetry.progress|patch budget
-1H|line|$telemetry.trend|live signal|h=170
-1X|shader|Generative field|h=220
-1ST|Loop|$telemetry.phase|items=$telemetry.steps`;
+2M|BTC/USD|$market.btc|spot|tone=success|s=hot
+2M|ETH/USD|$market.eth|spot|s=hot
+2M|SOL/USD|$market.sol|spot|s=hot
+1H|line|$market.trend|BTC tick stream|h=170
+1X|shader|Order flow field|h=190
+1ST|Live path|$market.status|items=$market.steps`;
 
-export const liveTelemetryScript = `
-    if (window.__lensLiveInterval) clearInterval(window.__lensLiveInterval);
-    const telemetryURL = "https://timeapi.io/api/time/current/zone?timeZone=UTC";
-    let tick = 0;
-    async function pushTelemetry() {
-      tick += 1;
-      let payload = {};
-      try {
-        const response = await fetch(telemetryURL, { cache: "no-store" });
-        if (response.ok) payload = await response.json();
-      } catch {}
-      const second = Number(payload.seconds ?? new Date().getUTCSeconds());
-      const milli = Number(payload.milliSeconds ?? new Date().getUTCMilliseconds());
-      const trend = Array.from({ length: 18 }, (_, index) => 18 + ((second + index * 4 + tick) % 48));
-      const phases = ["listening", "building", "patching", "speaking"];
-      const phase = phases[tick % phases.length];
-      const states = phases.map((name) => {
-        const state = name === phase ? "active" : phases.indexOf(name) < phases.indexOf(phase) ? "done" : "wait";
-        return name[0].toUpperCase() + name.slice(1) + "^" + state + "^" + (state === "active" ? "Updating live source" : "Runtime owned");
-      }).join(";");
-      window.lensStage.setSource("telemetry", {
-        latency: 42 + ((second * 7 + milli) % 86) + "ms",
-        tokens: "-" + (68 + (second % 9)) + "%",
-        progress: 48 + ((second + tick) * 7) % 44,
-        trend: trend.join(","),
-        phase,
-        steps: states
+export const liveMarketScript = `
+    if (window.__lensMarketSocket) {
+      try { window.__lensMarketSocket.close(); } catch {}
+      window.__lensMarketSocket = null;
+    }
+    if (window.__lensMarketFallbackInterval) clearInterval(window.__lensMarketFallbackInterval);
+
+    const products = ["BTC-USD", "ETH-USD", "SOL-USD"];
+    const priceState = new Map();
+    const btcSeries = [34, 36, 35, 39, 38, 42, 41, 44];
+    let tickCount = 0;
+    let feedStatus = "connecting to Coinbase WebSocket";
+    let fallbackStarted = false;
+
+    function formatPrice(value) {
+      const price = Number(value);
+      if (!Number.isFinite(price)) return "waiting";
+      const digits = price >= 1000 ? 0 : price >= 100 ? 2 : 3;
+      return "$" + price.toLocaleString("en-US", { maximumFractionDigits: digits, minimumFractionDigits: digits >= 2 ? 2 : 0 });
+    }
+
+    function stepState(name, state, detail) {
+      return name + "^" + state + "^" + detail;
+    }
+
+    function publishMarket() {
+      const btc = Number(priceState.get("BTC-USD"));
+      if (Number.isFinite(btc)) {
+        const normalized = 22 + Math.round((btc % 1000) / 1000 * 48);
+        btcSeries.push(normalized);
+        while (btcSeries.length > 18) btcSeries.shift();
+      }
+      window.lensStage.setSource("market", {
+        btc: formatPrice(priceState.get("BTC-USD")),
+        eth: formatPrice(priceState.get("ETH-USD")),
+        sol: formatPrice(priceState.get("SOL-USD")),
+        trend: btcSeries.join(","),
+        status: feedStatus,
+        steps: [
+          stepState("Coinbase WS", fallbackStarted ? "wait" : "active", "public exchange ticker"),
+          stepState("REST fallback", fallbackStarted ? "active" : "wait", "keeps demo moving if sockets fail"),
+          stepState("LensUI source", "active", tickCount + " live updates applied")
+        ].join(";")
       });
     }
-    pushTelemetry();
-    window.__lensLiveInterval = setInterval(pushTelemetry, 3000);
+
+    function applyTicker(ticker) {
+      const product = ticker.product_id || ticker.productId || ticker.product;
+      const price = ticker.price || ticker.last_price || ticker.price_level || ticker.best_bid || ticker.best_ask;
+      if (!products.includes(product) || price == null) return;
+      priceState.set(product, Number(price));
+      tickCount += 1;
+      feedStatus = "streaming Coinbase trades";
+      publishMarket();
+    }
+
+    function extractTickers(message) {
+      const tickers = [];
+      if (Array.isArray(message.events)) {
+        for (const event of message.events) {
+          if (Array.isArray(event.tickers)) tickers.push(...event.tickers);
+        }
+      }
+      if (message.type === "ticker" || message.channel === "ticker") tickers.push(message);
+      return tickers;
+    }
+
+    async function pollSpot() {
+      fallbackStarted = true;
+      feedStatus = "polling Coinbase spot prices";
+      await Promise.all(products.map(async (product) => {
+        try {
+          const response = await fetch("https://api.coinbase.com/v2/prices/" + product + "/spot", { cache: "no-store" });
+          if (!response.ok) return;
+          const payload = await response.json();
+          const amount = payload && payload.data && payload.data.amount;
+          if (amount != null) {
+            priceState.set(product, Number(amount));
+            tickCount += 1;
+          }
+        } catch {}
+      }));
+      publishMarket();
+    }
+
+    publishMarket();
+    try {
+      const socket = new WebSocket("wss://ws-feed.exchange.coinbase.com");
+      window.__lensMarketSocket = socket;
+      socket.addEventListener("open", () => {
+        feedStatus = "subscribed to Coinbase ticker";
+        socket.send(JSON.stringify({ type: "subscribe", product_ids: products, channels: ["ticker"] }));
+        publishMarket();
+      });
+      socket.addEventListener("message", (event) => {
+        try {
+          for (const ticker of extractTickers(JSON.parse(event.data))) applyTicker(ticker);
+        } catch {}
+      });
+      socket.addEventListener("error", () => {
+        if (!fallbackStarted) pollSpot();
+      });
+      socket.addEventListener("close", () => {
+        if (!fallbackStarted) pollSpot();
+      });
+      window.setTimeout(() => {
+        if (tickCount === 0 && !fallbackStarted) pollSpot();
+      }, 4200);
+    } catch {
+      pollSpot();
+    }
+    window.__lensMarketFallbackInterval = setInterval(pollSpot, 8000);
   `;
 
-export function liveFrameHTML(): string {
-  return stageFrameHTML(liveDemoLightcode, liveTelemetryScript);
-}
+export const liveDemoLightcode = liveMarketLightcode;
+
+export const liveDemoScript = liveMarketScript;
 
 export function staticStageHTML(lightcode: string, afterRenderScript = ""): string {
   return stageFrameHTML(lightcode, afterRenderScript);

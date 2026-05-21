@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { AgentBridgePanel, type ExternalApply, type ExternalRender } from "./AgentBridgePanel";
 import { InteractiveLensUIDemo } from "./InteractiveLensUIDemo";
-import { liveDemoLightcode, liveTelemetryScript } from "../lib/specimens";
+import { liveDemoLightcode, liveDemoScript } from "../lib/specimens";
 
 type DemoSample = {
   label?: string;
@@ -17,13 +17,13 @@ type DemoKey = "live" | "animated" | "brief" | "gallery" | "timeline";
 const samples: Record<DemoKey, DemoSample> = {
   live: {
     label: "live data",
-    description: "Live source values update in place. The demo polls a public time API every few seconds, then pushes source snapshots into the existing LensUI surface.",
+    description: "Coinbase public market data updates BTC, ETH, and SOL fields in place after the first render.",
     lightcode: liveDemoLightcode,
-    afterRenderScript: liveTelemetryScript
+    afterRenderScript: liveDemoScript
   },
   animated: {
     label: "animated art",
-    description: "Renderer-owned shader and vector nodes create motion and generative visual texture without asking the model to emit canvas, SVG, WebGL, or animation code.",
+    description: "Renderer-owned shader and vector nodes create motion without model-authored canvas, SVG, WebGL, or animation code.",
     lightcode: `0F|st=terminal
 0V|Generative Surface|Renderer-owned motion
 1X|shader|Signal field|h=300
@@ -56,7 +56,7 @@ const samples: Record<DemoKey, DemoSample> = {
 };
 
 function sampleDescription(key: DemoKey): string {
-  return samples[key].description ?? "Switch between compact lightcode payloads, edit the payload, and let the browser runtime redraw the stage in place.";
+  return samples[key].description ?? "Switch payloads, edit lightcode, and let the runtime redraw the stage in place.";
 }
 
 function sampleLabel(key: DemoKey): string {
@@ -76,7 +76,7 @@ export function DemoStage() {
   return (
     <div className="demo-layout">
       <aside className="demo-panel">
-        <h2>Runtime demo.</h2>
+        <h2>Live render target.</h2>
         <p className="section-lead">{sampleDescription(active)}</p>
         <div className="demo-controls" aria-label="Demo renders">
           {Object.keys(samples).map((name) => (
@@ -91,8 +91,8 @@ export function DemoStage() {
           ))}
         </div>
         <div className="demo-note">
-          <strong>No resend loop.</strong>
-          <span>The iframe below polls a public API and uses `window.lensStage.setSource(...)` to update existing bindings.</span>
+          <strong>No rebuild loop.</strong>
+          <span>The iframe uses `window.lensStage.setSource(...)` to update existing market bindings after render.</span>
         </div>
         <AgentBridgePanel onApply={handleApply} onRender={handleRender} />
       </aside>

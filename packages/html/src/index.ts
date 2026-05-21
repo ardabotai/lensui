@@ -65,7 +65,7 @@ export class LensHTMLRenderer {
 
   private renderDefaultView(): string {
     return this.renderView("Ready", "Agent-rendered interface", { align: "center", justify: "center", width: "lg" }, [
-      this.renderScene({ component: "scene", key: "ready", args: ["shader", "ready"], props: { height: "260" }, children: [] }),
+      this.renderScene({ component: "scene", key: "ready", args: ["pixel", "ready"], props: { height: "220" }, children: [] }),
       `<div class="mx-auto grid w-full max-w-xl gap-2" data-lens-adaptive-grid data-min-cell-width="150" data-max-cols="3">
         <span class="rounded-md border border-border/80 bg-secondary/50 px-3 py-2 text-center text-xs font-medium text-muted-foreground">Semantic lightcode</span>
         <span class="rounded-md border border-border/80 bg-secondary/50 px-3 py-2 text-center text-xs font-medium text-muted-foreground">Live sources</span>
@@ -259,8 +259,16 @@ export class LensHTMLRenderer {
     const raw = arg(node, 0) ?? node.props.url ?? "";
     const url = webViewURL(raw, node.props);
     const title = arg(node, 1) ?? node.props.title ?? "Web";
-    const height = truthy(node.props.full) ? "max(220px, calc(var(--lens-container-height, 720px) - 80px))" : `clamp(180px, calc(var(--lens-container-height, 720px) * 0.54), ${numberProp(node, "h", 420)}px)`;
-    return `<section id="lens_webview_${esc(id)}" class="lens-panel relative overflow-hidden rounded-lg border" style="height:${height}" data-lens-webview-url="${esc(url)}" data-lens-webview-title="${esc(title)}" data-lens-webview-play="${truthy(node.props.play) ? "1" : "0"}" ${this.attrs(node, "webview")}><div class="absolute inset-0 grid place-items-center text-center" style="background-image:linear-gradient(90deg,rgb(255 255 255 / 0.035) 1px,transparent 1px),linear-gradient(0deg,rgb(255 255 255 / 0.032) 1px,transparent 1px);background-size:24px 24px"><div><div class="font-mono text-xs uppercase text-muted-foreground">interactive web view</div><div class="mt-2 lens-display text-2xl font-semibold">${esc(title)}</div></div></div></section>`;
+    const caption = node.props.caption ?? node.props.meta ?? "";
+    const rawHeight = node.props.height ?? node.props.vh ?? node.props.h;
+    const parsedHeight = rawHeight == null ? NaN : Number(rawHeight);
+    const requestedHeight = Number.isFinite(parsedHeight) ? parsedHeight : 420;
+    const height = truthy(node.props.full)
+      ? "max(220px, calc(var(--lens-container-height, 720px) - 80px))"
+      : rawHeight != null
+        ? `clamp(180px, calc(var(--lens-container-height, 720px) * 0.72), ${requestedHeight}px)`
+        : `clamp(180px, calc(var(--lens-container-height, 720px) * 0.54), ${requestedHeight}px)`;
+    return `<section id="lens_webview_${esc(id)}" class="lens-panel relative overflow-hidden rounded-lg border" style="height:${height}" data-lens-webview-url="${esc(url)}" data-lens-webview-title="${esc(title)}" data-lens-webview-caption="${esc(caption)}" data-lens-webview-play="${truthy(node.props.play) ? "1" : "0"}" ${this.attrs(node, "webview")}><div class="absolute inset-0 grid place-items-center text-center" style="background-image:linear-gradient(90deg,rgb(255 255 255 / 0.035) 1px,transparent 1px),linear-gradient(0deg,rgb(255 255 255 / 0.032) 1px,transparent 1px);background-size:24px 24px"><div><div class="font-mono text-xs uppercase text-muted-foreground">interactive web view</div><div class="mt-2 lens-display text-2xl font-semibold">${esc(title)}</div></div></div></section>`;
   }
 
   private renderVector(node: LensNode): string {
@@ -875,6 +883,11 @@ function mountScenes(mount: HTMLElement): void {
     context.scale(ratio, ratio);
     const width = rect.width;
     const height = rect.height;
+    const kind = canvas.dataset.sceneKind ?? "shader";
+    if (kind === "pixel" || kind === "pixels" || kind === "noise") {
+      drawPixelScene(context, width, height);
+      return;
+    }
     const gradient = context.createLinearGradient(0, 0, width, height);
     gradient.addColorStop(0, "rgba(255, 255, 255, 0.3)");
     gradient.addColorStop(1, "rgba(255, 255, 255, 0.08)");
@@ -890,6 +903,35 @@ function mountScenes(mount: HTMLElement): void {
       context.stroke();
     }
   });
+}
+
+function drawPixelScene(context: CanvasRenderingContext2D, width: number, height: number): void {
+  const pixel = Math.max(6, Math.min(12, Math.floor(Math.min(width, height) / 24)));
+  context.fillStyle = "rgba(10, 10, 10, 0.74)";
+  context.fillRect(0, 0, width, height);
+  for (let y = 0; y < height; y += pixel) {
+    for (let x = 0; x < width; x += pixel) {
+      const nx = width > 0 ? x / width : 0;
+      const ny = height > 0 ? y / height : 0;
+      const edge = Math.min(nx, ny, 1 - nx, 1 - ny);
+      const edgeWeight = Math.max(0, 1 - edge * 3.2);
+      const grain = sceneNoise(x / pixel, y / pixel, 3);
+      const ripple = 0.5 + 0.5 * Math.sin(nx * 9.1 + ny * 7.6 + grain * 3.4);
+      if (grain * 0.68 + ripple * 0.32 < 0.44 + (1 - edgeWeight) * 0.28) continue;
+      const hue = Math.round((nx * 190 + ny * 130 + grain * 46) % 360);
+      const alpha = Math.min(0.78, 0.12 + edgeWeight * 0.48 + grain * 0.12);
+      context.fillStyle = `hsla(${hue}, 92%, ${58 + edgeWeight * 16}%, ${alpha})`;
+      context.fillRect(x + 1, y + 1, Math.max(1, pixel - 2), Math.max(1, pixel - 2));
+    }
+  }
+}
+
+function sceneNoise(x: number, y: number, salt: number): number {
+  return fract(Math.sin(x * 127.1 + y * 311.7 + salt * 74.7) * 43_758.5453);
+}
+
+function fract(value: number): number {
+  return value - Math.floor(value);
 }
 
 function applyTheme(theme: LensTheme, root: HTMLElement): void {

@@ -1279,7 +1279,7 @@ function isValidComponentName(name: string): boolean {
 function defaultLightcode(): string {
   return `0F|st=mono
 0V|Ready|Agent-rendered interface|align=center|justify=center|width=lg
-1X|shader|ready|height=260
+1X|pixel|ready|height=220
 1G|cols=3|gap=sm
 2B|Semantic lightcode
 2B|Live sources

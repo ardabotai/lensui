@@ -455,70 +455,57 @@ R
     expect(health.errors).toEqual([]);
   });
 
-  test("renders the LensUI specimens page with real runtime iframes", async ({ page }) => {
-    test.setTimeout(90_000);
-    const health = collectPageHealth(page);
-
-    await page.goto(`${siteOrigin}/components`);
-    await expect(page.getByText("Maximum visual range, minimum model syntax.")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Mono", exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Runtime Access", exact: true })).toBeVisible();
-    await expect(page.getByText("Status Board")).toBeVisible();
-    await expect(page.getByText("News Brief")).toBeVisible();
-
-    const statusFrame = page.frameLocator('iframe[title="Status Board"]');
-    await expect(statusFrame.locator("#lens-stage-root")).toBeVisible();
-    await expect(statusFrame.getByText("Realtime Agent")).toBeVisible();
-    await expect(statusFrame.getByText("Queue", { exact: true })).toBeVisible();
-
-    const accountFrame = page.frameLocator('iframe[title="Runtime Access"]');
-    await expect(accountFrame.getByText("Continue")).toBeVisible();
-
-    const comparisonFrame = page.frameLocator('iframe[title="Comparison"]');
-    await expect(comparisonFrame.getByText("46 tokens")).toBeVisible();
-
-    const statusSpecimen = page.locator(".specimen").filter({ hasText: "Status Board" }).first();
-    await statusSpecimen.getByRole("tab", { name: "Lightcode" }).click();
-    const editor = statusSpecimen.getByLabel("Status Board editable lightcode");
-    await expect(editor).toBeVisible();
-    await editor.fill(`0F|st=mono
- 1M|Broken|bad indent`);
-    await statusSpecimen.getByRole("button", { name: "Render" }).click();
-    await expect(statusSpecimen.getByText("Render failed").first()).toBeVisible();
-    await expect(statusFrame.locator("[data-lens-render-failure]")).toBeVisible();
-    await expect(statusFrame.getByText("Previous UI preserved. Fix the lightcode and render again.")).toBeVisible();
-
-    await statusSpecimen.getByRole("tab", { name: "Lightcode" }).click();
-    await editor.fill(`0F|st=mono
-0V|Edited Surface|Manual lightcode edit
-1M|State|ok`);
-    await statusSpecimen.getByRole("button", { name: "Render" }).click();
-    await expect(statusFrame.getByText("Edited Surface")).toBeVisible();
-    await expect(statusFrame.locator("[data-lens-render-failure]")).toHaveCount(0);
-
-    expect(health.errors).toEqual([]);
-  });
-
-  test("renders the Next docs app routes and live demo", async ({ page }) => {
+  test("supports editable one-page demo renders with failure rollback", async ({ page }) => {
     test.setTimeout(90_000);
     const health = collectPageHealth(page);
 
     await page.goto(siteOrigin);
-    await expect(page.getByRole("heading", { name: "Agents should emit UI intent, not frontend code.", exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Home", exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Specimens", exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Demo", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Try the running surface.", exact: true })).toBeVisible();
+
+    const demo = page.locator(".demo-stage .lens-playground").first();
+    const demoFrame = page.frameLocator('iframe[title="LensUI demo render"]');
+    await expect(demoFrame.locator("#lens-stage-root")).toBeVisible();
+    await expect(demoFrame.getByText("Crypto Live Tape")).toBeVisible();
+
+    await demo.getByRole("tab", { name: "Lightcode" }).click();
+    const editor = demo.getByLabel("LensUI demo render editable lightcode");
+    await expect(editor).toBeVisible();
+    await editor.fill(`0F|st=mono
+ 1M|Broken|bad indent`);
+    await demo.getByRole("button", { name: "Render" }).click();
+    await expect(demo.getByText("Render failed").first()).toBeVisible();
+    await expect(demoFrame.locator("[data-lens-render-failure]")).toBeVisible();
+    await expect(demoFrame.getByText("Previous UI preserved. Fix the lightcode and render again.")).toBeVisible();
+
+    await demo.getByRole("tab", { name: "Lightcode" }).click();
+    await editor.fill(`0F|st=mono
+0V|Edited Surface|Manual lightcode edit
+1M|State|ok`);
+    await demo.getByRole("button", { name: "Render" }).click();
+    await expect(demoFrame.getByText("Edited Surface")).toBeVisible();
+    await expect(demoFrame.locator("[data-lens-render-failure]")).toHaveCount(0);
+
+    expect(health.errors).toEqual([]);
+  });
+
+  test("renders the one-page Next docs app and live demo", async ({ page }) => {
+    test.setTimeout(90_000);
+    const health = collectPageHealth(page);
+
+    await page.goto(siteOrigin);
+    await expect(page.getByRole("heading", { name: "Live UI generation, already running.", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Why", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Live demo", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Agent bridge", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Install", exact: true })).toBeVisible();
     const header = page.getByRole("banner");
     await expect(header.getByRole("link", { name: "npm", exact: true })).toHaveAttribute("href", "https://www.npmjs.com/package/@ardabot/lensui");
     await expect(header.getByRole("link", { name: "GitHub", exact: true })).toHaveAttribute("href", "https://github.com/ardabotai/lensui");
     await expect(page.getByText("npm install @ardabot/lensui")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "The agent contract.", exact: true })).toBeVisible();
-    const heroFrame = page.frameLocator('iframe[title="LensUI homepage runtime preview"]');
+    await expect(page.getByRole("heading", { name: "The old loop generates code. LensUI changes the running interface.", exact: true })).toBeVisible();
+    const heroFrame = page.frameLocator('iframe[title="LensUI live runtime preview"]');
     await expect(heroFrame.locator("#lens-stage-root")).toBeVisible();
-    await expect(heroFrame.getByText("Runtime Pulse")).toBeVisible();
-
-    await page.getByRole("link", { name: "Specimens", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Maximum visual range, minimum model syntax.", exact: true })).toBeVisible();
+    await expect(heroFrame.getByText("Crypto Live Tape")).toBeVisible();
 
     const bridgeServer = startLensBridge({ port: 0 });
     await once(bridgeServer, "listening");
@@ -527,13 +514,13 @@ R
     const bridgeOrigin = `http://127.0.0.1:${bridgeAddress.port}`;
 
     try {
-      await page.goto(`${siteOrigin}/demo?bridge=${encodeURIComponent(bridgeOrigin)}`);
-      await expect(page.getByRole("heading", { name: "Live data, agent targets, generative surfaces.", exact: true })).toBeVisible();
+      await page.goto(`${siteOrigin}?bridge=${encodeURIComponent(bridgeOrigin)}`);
+      await expect(page.getByRole("heading", { name: "Try the running surface.", exact: true })).toBeVisible();
       let demoFrame = page.frameLocator('iframe[title="LensUI demo render"]');
       await expect(demoFrame.locator("#lens-stage-root")).toBeVisible();
       await expect(demoFrame.locator("#lens-stage-root")).toHaveAttribute("data-lens-sizing", "auto");
       await expect(demoFrame.locator("#lens-stage-root")).toHaveAttribute("data-lens-flow", "auto");
-      await expect(demoFrame.getByText("Live Runtime")).toBeVisible();
+      await expect(demoFrame.getByText("Crypto Live Tape")).toBeVisible();
       await expect(demoFrame.locator("[data-lens-scene]")).toHaveAttribute("data-scene-kind", "shader");
       await page.waitForFunction(() => {
         const iframe = document.querySelector<HTMLIFrameElement>('iframe[title="LensUI demo render"]');
@@ -552,7 +539,7 @@ R
       });
       expect(playgroundLayout.iframeHeight).toBeGreaterThan(560);
       expect(playgroundLayout.footerTop).toBeGreaterThanOrEqual(playgroundLayout.iframeBottom - 1);
-      await expect(demoFrame.getByText("p95")).toBeVisible();
+      await expect(demoFrame.getByText("BTC/USD")).toBeVisible();
       const firstLiveText = await demoFrame.locator("body").innerText();
       await expect.poll(async () => page.frameLocator('iframe[title="LensUI demo render"]').locator("body").innerText(), { timeout: 8000 }).not.toBe(firstLiveText);
       const secondLiveText = await demoFrame.locator("body").innerText();
@@ -597,13 +584,13 @@ R
 
     await page.setViewportSize({ width: 390, height: 1200 });
     await page.goto(siteOrigin);
-    await expect(page.getByRole("heading", { name: "Agents should emit UI intent, not frontend code.", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Live UI generation, already running.", exact: true })).toBeVisible();
 
     const docWidth = await page.evaluate(() => document.documentElement.clientWidth);
     const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
     expect(scrollWidth).toBeLessThanOrEqual(docWidth + 1);
 
-    const heroFrame = page.frameLocator('iframe[title="LensUI homepage runtime preview"]');
+    const heroFrame = page.frameLocator('iframe[title="LensUI live runtime preview"]');
     await expect(heroFrame.locator("#lens-stage-root")).toHaveAttribute("data-lens-size", "narrow");
     await expect(heroFrame.locator("[data-lens-adaptive-grid]").first()).toHaveAttribute("data-lens-cols", "1");
     expect(health.errors).toEqual([]);
@@ -693,15 +680,21 @@ async function stageOverflowReport(page: Page): Promise<{
 async function iframeScreenshot(page: Page): Promise<Buffer> {
   const iframe = page.locator('iframe[title="LensUI demo render"]');
   await expect(iframe).toBeVisible();
+  await iframe.scrollIntoViewIfNeeded();
   const box = await iframe.boundingBox();
   if (!box) throw new Error("LensUI demo iframe is not visible.");
+  const viewport = page.viewportSize();
+  const clipX = Math.max(0, Math.floor(box.x));
+  const clipY = Math.max(0, Math.floor(box.y));
+  const maxWidth = Math.max(1, (viewport?.width ?? Math.ceil(box.width)) - clipX);
+  const maxHeight = Math.max(1, (viewport?.height ?? Math.ceil(box.height)) - clipY);
   return page.screenshot({
     animations: "disabled",
     clip: {
-      x: Math.max(0, Math.floor(box.x)),
-      y: Math.max(0, Math.floor(box.y)),
-      width: Math.max(1, Math.ceil(box.width)),
-      height: Math.max(1, Math.min(720, Math.ceil(box.height)))
+      x: clipX,
+      y: clipY,
+      width: Math.max(1, Math.min(maxWidth, Math.ceil(box.width))),
+      height: Math.max(1, Math.min(maxHeight, 720, Math.ceil(box.height)))
     }
   });
 }

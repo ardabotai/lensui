@@ -3,9 +3,10 @@ import { GitHubIcon } from "./GitHubIcon";
 import { githubURL, npmURL } from "../lib/links";
 
 const navItems = [
-  { href: "/", label: "Home" },
-  { href: "/components", label: "Specimens" },
-  { href: "/demo", label: "Demo" }
+  { href: "#why", label: "Why" },
+  { href: "#demo", label: "Live demo" },
+  { href: "#bridge", label: "Agent bridge" },
+  { href: "#install", label: "Install" }
 ];
 
 export function Header() {
@@ -18,9 +19,9 @@ export function Header() {
       <div className="header-right">
         <nav aria-label="Primary navigation">
           {navItems.map((item) => (
-            <Link key={item.href} href={item.href}>
+            <a key={item.href} href={item.href}>
               {item.label}
-            </Link>
+            </a>
           ))}
         </nav>
         <a className="header-badge" href={npmURL} rel="noreferrer" target="_blank">

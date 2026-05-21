@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { trackLensUIDocsEvent } from "./AnalyticsTracker";
 import { interactiveStageHTML } from "../lib/specimens";
 
 type RenderStatus =
@@ -83,6 +84,7 @@ export function InteractiveLensUIDemo({
 
   const renderDraft = useCallback(() => {
     const frame = iframeRef.current?.contentWindow;
+    trackLensUIDocsEvent("lensui.demo.render_clicked", { title });
     setTab("view");
     setStatus({ state: "rendering", message: "Rendering" });
     frame?.postMessage({
@@ -93,6 +95,7 @@ export function InteractiveLensUIDemo({
   }, [draft, title]);
 
   const resetDraft = useCallback(() => {
+    trackLensUIDocsEvent("lensui.demo.reset_clicked", { title });
     setDraft(lightcode.trim());
     setStatus({ state: "rendering", message: "Rendering" });
     setTab("view");

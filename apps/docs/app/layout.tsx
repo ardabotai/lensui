@@ -1,18 +1,22 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AnalyticsTracker } from "../components/AnalyticsTracker";
 
 export const metadata: Metadata = {
   title: {
-    default: "LensUI Framework",
+    default: "LensUI",
     template: "%s | LensUI"
   },
-  description: "Token-efficient generative UI runtime for agent-rendered interfaces."
+  description: "Live AI-generated UI surfaces for agents that stream compact lightcode into a running client."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <AnalyticsTracker />
+        {children}
+      </body>
     </html>
   );
 }

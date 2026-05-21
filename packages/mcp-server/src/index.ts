@@ -5,7 +5,7 @@ export interface LensSessionContext {
 
 export interface LensClientBinding {
   send(commandStream: string): Promise<unknown>;
-  read(kind: "lightcode" | "components" | "styles" | "metadata" | "status"): Promise<unknown>;
+  read(kind: "lightcode" | "components" | "styles" | "registry" | "metadata" | "status"): Promise<unknown>;
   screenshot?(): Promise<unknown>;
 }
 
@@ -21,7 +21,7 @@ export class LensMCPBridge {
     return client.send(c);
   }
 
-  async lens_read(context: LensSessionContext, kind: "lightcode" | "components" | "styles" | "metadata" | "status" = "status"): Promise<unknown> {
+  async lens_read(context: LensSessionContext, kind: "lightcode" | "components" | "styles" | "registry" | "metadata" | "status" = "status"): Promise<unknown> {
     const client = await this.resolver.resolve(context);
     return client.read(kind);
   }

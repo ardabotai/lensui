@@ -6,7 +6,7 @@ import { InteractiveLensUIDemo } from "../components/InteractiveLensUIDemo";
 import { LensUIFrame } from "../components/LensUIFrame";
 import { benchmarkResults, benchmarkSummary } from "../lib/benchmarks";
 import { githubURL, npmURL } from "../lib/links";
-import { liveMarketLightcode, liveMarketScript } from "../lib/specimens";
+import { heroMarketLightcode, liveMarketLightcode, liveMarketScript } from "../lib/specimens";
 
 const proofCase = benchmarkResults[0];
 
@@ -27,9 +27,9 @@ const installCode = `npm install @ardabot/lensui
 npx lensui skill
 npx lensui bridge --port 5743`;
 
-const runtimeCode = `import { createStageRuntime } from "@ardabot/lensui/html";
+const runtimeCode = `import { createPersistentStageRuntime } from "@ardabot/lensui/html";
 
-const stage = createStageRuntime(document.querySelector("#lens-stage"));
+const stage = createPersistentStageRuntime(document.querySelector("#lens-stage"));
 
 stage.render(\`0F|st=studio
 0V|Market Pulse|Live source
@@ -57,7 +57,7 @@ export default function HomePage() {
           <div className="hero-copy">
             <h1>Live UI generation, already running.</h1>
             <p className="lead">
-              LensUI lets agents stream compact lightcode into a mounted browser surface. The UI appears immediately, updates from live sources, and rolls back invalid renders without shipping a new bundle.
+              LensUI lets agents generate interfaces inside a mounted browser surface, then save the useful pieces as reusable components. Built-ins are just the starter grammar; your agent grows the UI vocabulary while the app is running.
             </p>
             <div className="actions">
               <a className="button primary" href="#demo">Open live demo</a>
@@ -67,7 +67,7 @@ export default function HomePage() {
             <div className="hero-metrics" aria-label="LensUI live generation highlights">
               <div><strong>0kb</strong><span>new client bundle per render</span></div>
               <div><strong>{benchmarkSummary.averageReactSavings}%</strong><span>average token savings vs React</span></div>
-              <div><strong>live</strong><span>source updates after render</span></div>
+              <div><strong>save</strong><span>generated components for later use</span></div>
             </div>
           </div>
 
@@ -75,7 +75,9 @@ export default function HomePage() {
             <div className="hero-stage-card">
               <LensUIFrame
                 afterRenderScript={liveMarketScript}
-                lightcode={liveMarketLightcode}
+                className="hero-frame"
+                height={390}
+                lightcode={heroMarketLightcode}
                 title="LensUI live runtime preview"
               />
             </div>
@@ -100,9 +102,9 @@ export default function HomePage() {
 
         <section className="shift-section shell" id="why">
           <div className="section-copy">
-            <h2>The old loop generates code. LensUI changes the running interface.</h2>
+            <h2>The old loop generates code. LensUI grows a live interface.</h2>
             <p>
-              Most AI UI demos stop at code generation: the model writes React, a build runs, and the result ships later. LensUI is designed for live surfaces: agents send a tiny semantic payload to a runtime that is already in the client.
+              Most AI UI demos stop at code generation: the model writes React, a build runs, and the result ships later. LensUI is designed for living surfaces: agents render now, patch what is already on screen, save components that work, and reuse them by name later.
             </p>
           </div>
           <div className="flow-compare">
@@ -120,7 +122,22 @@ export default function HomePage() {
                 <FlowStep label="1. Prompt" text="Ask an agent for a surface." />
                 <FlowStep label="2. Lightcode" text="Model emits semantic rows and source bindings." />
                 <FlowStep label="3. Render" text="The mounted runtime updates the existing page." />
+                <FlowStep label="4. Remember" text="Useful components and styles are saved, patched, and called by short names later." />
               </ol>
+            </article>
+          </div>
+          <div className="memory-loop" aria-label="LensUI generate save reuse loop">
+            <article>
+              <strong>Generate</strong>
+              <span>Agents compose a purpose-built UI for the current request instead of choosing from a fixed gallery.</span>
+            </article>
+            <article>
+              <strong>Save</strong>
+              <span>Custom HTML, React, aliases, and LightStyle packs can be stored once when built-ins are not enough.</span>
+            </article>
+            <article>
+              <strong>Recall</strong>
+              <span>Future turns instantiate saved pieces by short names, so the UI gets richer without resending bulky code.</span>
             </article>
           </div>
         </section>
@@ -149,11 +166,34 @@ export default function HomePage() {
           </div>
         </section>
 
+        <section className="safety-section shell" id="safety">
+          <div className="section-copy compact">
+            <h2>Isn't agent-generated frontend code unsafe?</h2>
+            <p>
+              Yes. That is a real concern. LensUI is intentionally powerful: raw HTML, CSS, and JavaScript components are enabled by default because the goal is maximum expressive range for agents. Treat those components like untrusted plugin code until your host decides otherwise.
+            </p>
+          </div>
+          <div className="safety-grid">
+            <article>
+              <strong>Default stance</strong>
+              <span>The runtime trusts browser security boundaries, validates lightcode, preserves the last good render, and lets hosts mount LensUI in an iframe or isolated origin.</span>
+            </article>
+            <article>
+              <strong>Host control</strong>
+              <span>Apps can add review hooks, component allowlists, CSP, sandboxed iframes, approval flows, or disable raw component kinds when their product needs stricter policy.</span>
+            </article>
+            <article>
+              <strong>Practical rule</strong>
+              <span>Keep secrets, billing, auth, and privileged tools out of frontend code. Let raw components draw and interact; route sensitive effects through host-owned capabilities.</span>
+            </article>
+          </div>
+        </section>
+
         <section className="runtime-section wide-shell" id="demo">
           <div className="runtime-intro">
             <h2>Try the running surface.</h2>
             <p>
-              Edit lightcode, render it, watch public data update in place, or connect a local coding agent to this exact browser container.
+              Watch the runtime render stable UI lightcode on the left while live source updates and agent renders append on the right. Starter examples show the grammar; the bridge lets your own agent generate the real interface.
             </p>
           </div>
           <DemoStage />

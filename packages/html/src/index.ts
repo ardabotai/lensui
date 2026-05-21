@@ -2,6 +2,7 @@ import {
   LensApplyResult,
   LensBinding,
   LensComponentDefinition,
+  LensUISavedRegistry,
   LensNode,
   LensNodeComponent,
   LensRenderMetadata,
@@ -15,10 +16,31 @@ import {
   collectBindings,
   defaultTheme,
   emptyMetadata,
+  emptySavedRegistry,
+  normalizeSavedRegistry,
   parseLightcode,
   resolveBinding,
   resolvePath
 } from "@lensui/core";
+
+export type LensRegistryStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+export interface LensRegistryPersistenceOptions {
+  key?: string;
+  storage?: LensRegistryStorage | null;
+}
+
+export interface LensComponentPolicy {
+  allowHTMLComponents?: boolean;
+  allowHTMLScripts?: boolean;
+  allowInlineEventHandlers?: boolean;
+  allowStyleTags?: boolean;
+}
+
+export interface LensStageRuntimeOptions {
+  componentPolicy?: LensComponentPolicy;
+  persistence?: LensRegistryPersistenceOptions | boolean;
+}
 
 export interface LensStageRuntime {
   render(lightcode: string, components?: LensComponentDefinition[], styles?: LightStylePackDefinition[], defaultStyle?: string): LensApplyResult;
@@ -32,15 +54,37 @@ export interface LensStageRuntime {
   deleteStyle(name: string): LensApplyResult;
   setDefaultStyle(name?: string): LensApplyResult;
   setSource(id: string, payload: unknown): boolean;
-  read(kind: "lightcode" | "components" | "styles" | "metadata" | "status"): unknown;
+  read(kind: "lightcode" | "components" | "styles" | "registry" | "metadata" | "status"): unknown;
   validate(lightcode: string, components?: LensComponentDefinition[], styles?: LightStylePackDefinition[], defaultStyle?: string): LensApplyResult;
+  loadRegistry(registry: LensUISavedRegistry): LensApplyResult;
+  enablePersistence(options?: LensRegistryPersistenceOptions): LensStageRuntime;
+  persistRegistry(options?: LensRegistryPersistenceOptions): void;
+  clearPersistedRegistry(options?: LensRegistryPersistenceOptions): void;
 }
+
+export const defaultRegistryStorageKey = "lensui:registry";
+
+export const defaultComponentPolicy: Required<LensComponentPolicy> = {
+  allowHTMLComponents: true,
+  allowHTMLScripts: true,
+  allowInlineEventHandlers: true,
+  allowStyleTags: true
+};
+
+export const permissiveComponentPolicy: Required<LensComponentPolicy> = {
+  allowHTMLComponents: true,
+  allowHTMLScripts: true,
+  allowInlineEventHandlers: true,
+  allowStyleTags: true
+};
 
 export class LensHTMLRenderer {
   private sources: Record<string, unknown> = Object.create(null);
   private styles: LightStyleSheet = { theme: defaultTheme(), recipes: {} };
   private vectorID = 0;
   private sceneID = 0;
+
+  constructor(private readonly options: { componentPolicy?: LensComponentPolicy } = {}) {}
 
   render(lightcode: string, components: LensComponentDefinition[] = [], styles: LightStylePackDefinition[] = [], defaultStyle?: string): LensRenderResult {
     const parsed = parseLightcode(lightcode, components, styles, defaultStyle);
@@ -119,7 +163,7 @@ export class LensHTMLRenderer {
       case "steps": return this.renderSteps(node);
       case "step": return this.renderStep(node);
       case "mosaic": return this.renderMosaic(node);
-      case "customHTML": return renderTemplate(node.htmlTemplate ?? "", node, this.sources, this.renderChildren(node));
+      case "customHTML": return this.renderCustomHTML(node);
       case "react": return `<div class="lens-panel rounded-lg border p-4 text-sm text-muted-foreground">React component ${esc(node.reactExport ?? "default")} registered.</div>`;
       case "swiftui": return `<div class="lens-panel rounded-lg border p-4 text-sm text-muted-foreground">Native adapter ${esc(arg(node, 0) ?? node.key)} registered.</div>`;
       default: return "";
@@ -515,18 +559,27 @@ export class LensHTMLRenderer {
       : `<img src="${esc(src)}" alt="${esc(alt)}" class="block w-full object-cover" style="${adaptiveHeightStyle(height, 0.34, 120)}" loading="lazy">`;
     return `<figure class="${featured ? "sm:col-span-2 sm:row-span-2 " : ""}min-w-0 flex-1 overflow-hidden rounded-lg border bg-secondary/30" style="min-width:min(220px, 100%)">${content}${caption ? `<figcaption class="border-t border-border/70 px-3 py-2 font-mono text-[11px] uppercase text-muted-foreground">${esc(caption)}</figcaption>` : ""}</figure>`;
   }
+
+  private renderCustomHTML(node: LensNode): string {
+    const policy = resolvedComponentPolicy(this.options.componentPolicy);
+    if (!policy.allowHTMLComponents) throw new LensUIError("HTML components are disabled by host policy");
+    const html = renderTemplate(node.htmlTemplate ?? "", node, this.sources, this.renderChildren(node));
+    return applyHTMLComponentPolicy(html, policy);
+  }
 }
 
 export class BrowserLensStageRuntime implements LensStageRuntime {
   private workspace = new LensUIWorkspace();
-  private renderer = new LensHTMLRenderer();
+  private renderer: LensHTMLRenderer;
   private metadata: LensRenderMetadata = emptyMetadata();
   private theme: LensTheme = defaultTheme();
   private root: HTMLElement;
   private colorSchemeMedia?: MediaQueryList;
+  private persistence?: LensRegistryPersistenceOptions;
 
-  constructor(root: HTMLElement) {
+  constructor(root: HTMLElement, private readonly options: LensStageRuntimeOptions = {}) {
     this.root = root;
+    this.renderer = new LensHTMLRenderer({ componentPolicy: options.componentPolicy });
     this.colorSchemeMedia = window.matchMedia?.("(prefers-color-scheme: dark)");
     this.colorSchemeMedia?.addEventListener?.("change", () => {
       if (this.theme.mode === "system") applyTheme(this.theme, this.root);
@@ -609,14 +662,36 @@ export class BrowserLensStageRuntime implements LensStageRuntime {
     return result.ok;
   }
 
-  read(kind: "lightcode" | "components" | "styles" | "metadata" | "status"): unknown {
+  read(kind: "lightcode" | "components" | "styles" | "registry" | "metadata" | "status"): unknown {
     switch (kind) {
       case "lightcode": return this.workspace.lightcode;
       case "components": return this.workspace.components;
       case "styles": return this.workspace.readStyles();
+      case "registry": return this.workspace.snapshotRegistry();
       case "metadata": return this.metadata;
       case "status": return { ok: true, lightcodeLength: this.workspace.lightcode.length, components: this.workspace.components.length, styles: this.workspace.styles.length, defaultStyle: this.workspace.defaultStyle ?? null };
     }
+  }
+
+  loadRegistry(registry: LensUISavedRegistry): LensApplyResult {
+    return this.commit(() => {
+      this.workspace.loadRegistry(registry);
+    });
+  }
+
+  enablePersistence(options: LensRegistryPersistenceOptions = {}): this {
+    this.persistence = options;
+    const registry = loadRegistryFromLocalStorage(options);
+    this.loadRegistry(registry);
+    return this;
+  }
+
+  persistRegistry(options: LensRegistryPersistenceOptions = this.persistence ?? {}): void {
+    saveRegistryToLocalStorage(this.workspace.snapshotRegistry(), options);
+  }
+
+  clearPersistedRegistry(options: LensRegistryPersistenceOptions = this.persistence ?? {}): void {
+    clearRegistryFromLocalStorage(options);
   }
 
   validate(lightcode: string, components?: LensComponentDefinition[], styles?: LightStylePackDefinition[], defaultStyle?: string): LensApplyResult {
@@ -642,13 +717,16 @@ export class BrowserLensStageRuntime implements LensStageRuntime {
       activeRuntimeRoots.add(this.root);
       applyTheme(result.theme, this.root);
       clearRenderFailure(this.root);
-      executeHTMLComponentScripts(this.root);
+      executeHTMLComponentScripts(this.root, resolvedComponentPolicy(this.options.componentPolicy));
       mountRuntime(this.root);
       post({ kind: "rendered", metadata: result.metadata, theme: result.theme });
+      const changedComponents = JSON.stringify(previousComponents) !== JSON.stringify(this.workspace.components);
+      const changedStyles = JSON.stringify(previousStyles) !== JSON.stringify(this.workspace.styles) || previousDefaultStyle !== this.workspace.defaultStyle;
+      if (changedComponents || changedStyles) this.persistIfEnabled();
       return this.success(
         previousLightcode !== this.workspace.lightcode,
-        JSON.stringify(previousComponents) !== JSON.stringify(this.workspace.components),
-        JSON.stringify(previousStyles) !== JSON.stringify(this.workspace.styles) || previousDefaultStyle !== this.workspace.defaultStyle,
+        changedComponents,
+        changedStyles,
         result.metadata,
         result.theme
       );
@@ -671,6 +749,13 @@ export class BrowserLensStageRuntime implements LensStageRuntime {
   private failure(error: unknown): LensApplyResult {
     const message = error instanceof Error ? error.message : String(error);
     return { ok: false, changedLightcode: false, changedComponents: false, changedStyles: false, sourceUpdates: [], pageActions: [], metadata: this.metadata, theme: this.theme, error: message };
+  }
+
+  private persistIfEnabled(): void {
+    if (!this.persistence) return;
+    try {
+      this.persistRegistry(this.persistence);
+    } catch {}
   }
 }
 
@@ -695,8 +780,8 @@ export type LensStageSizeDetail = {
   overflowY: boolean;
 };
 
-export function createStageRuntime(root: HTMLElement): LensStageRuntime {
-  const runtime = new BrowserLensStageRuntime(root);
+export function createStageRuntime(root: HTMLElement, options: LensStageRuntimeOptions = {}): LensStageRuntime {
+  const runtime = new BrowserLensStageRuntime(root, options);
   const id = ensureRuntimeID(root);
   activeRuntimeRoots.add(root);
   const registry = ensureRuntimeRegistry();
@@ -707,7 +792,50 @@ export function createStageRuntime(root: HTMLElement): LensStageRuntime {
   }
   observeStageResize(root);
   post({ kind: "ready", lensID: id });
+  if (options.persistence) {
+    runtime.enablePersistence(options.persistence === true ? {} : options.persistence);
+  }
   return runtime;
+}
+
+export function createPersistentStageRuntime(root: HTMLElement, options: LensStageRuntimeOptions = {}): LensStageRuntime {
+  return createStageRuntime(root, { ...options, persistence: options.persistence || {} });
+}
+
+export function loadRegistryFromLocalStorage(options: LensRegistryPersistenceOptions = {}): LensUISavedRegistry {
+  const storage = registryStorage(options);
+  if (!storage) return emptySavedRegistry();
+  const raw = storage.getItem(registryStorageKey(options));
+  if (!raw) return emptySavedRegistry();
+  try {
+    return normalizeSavedRegistry(JSON.parse(raw));
+  } catch {
+    return emptySavedRegistry();
+  }
+}
+
+export function saveRegistryToLocalStorage(registry: LensUISavedRegistry, options: LensRegistryPersistenceOptions = {}): void {
+  const storage = registryStorage(options);
+  if (!storage) return;
+  storage.setItem(registryStorageKey(options), JSON.stringify(normalizeSavedRegistry(registry)));
+}
+
+export function clearRegistryFromLocalStorage(options: LensRegistryPersistenceOptions = {}): void {
+  registryStorage(options)?.removeItem(registryStorageKey(options));
+}
+
+function registryStorage(options: LensRegistryPersistenceOptions): LensRegistryStorage | undefined {
+  if (options.storage === null) return undefined;
+  if (options.storage) return options.storage;
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+function registryStorageKey(options: LensRegistryPersistenceOptions): string {
+  return options.key?.trim() || defaultRegistryStorageKey;
 }
 
 function mountRuntime(root: HTMLElement): void {
@@ -786,6 +914,7 @@ function fitStage(mount: HTMLElement): void {
   stageRoot.dataset.lensFlow = sizing === "auto" ? "auto" : narrow || portrait ? "scroll" : "fit";
   stageRoot.style.overflowX = "hidden";
   stageRoot.style.overflowY = sizing === "auto" ? "hidden" : narrow || portrait ? "auto" : "hidden";
+  applyResponsiveVisibility(stageRoot, { size, aspect });
   mount.querySelectorAll<HTMLElement>("[data-lens-adaptive-grid]").forEach((grid) => layoutAdaptiveGrid(grid, stageRoot));
   const horizontalScale = width / Math.max(1, frame.scrollWidth);
   const verticalScale = sizing === "auto" || narrow || portrait ? 1 : height / Math.max(1, frame.scrollHeight);
@@ -819,6 +948,30 @@ function emitStageSize(mount: HTMLElement, detail: LensStageSizeDetail): void {
 function px(value: string): number {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function applyResponsiveVisibility(stageRoot: HTMLElement, context: { size: "narrow" | "compact" | "wide"; aspect: "portrait" | "wide" | "balanced" }): void {
+  stageRoot.querySelectorAll<HTMLElement>("[data-lens-show], [data-lens-hide]").forEach((element) => {
+    const show = visibilityTokens(element.dataset.lensShow);
+    const hide = visibilityTokens(element.dataset.lensHide);
+    const visibleByShow = show.length === 0 || show.some((token) => visibilityTokenMatches(token, context));
+    const hiddenByHide = hide.some((token) => visibilityTokenMatches(token, context));
+    const hidden = !visibleByShow || hiddenByHide;
+    element.hidden = hidden;
+    element.dataset.lensVisible = hidden ? "0" : "1";
+  });
+}
+
+function visibilityTokens(value: string | undefined): string[] {
+  return (value ?? "").split(/[,\s]+/).map((token) => token.trim().toLowerCase()).filter(Boolean);
+}
+
+function visibilityTokenMatches(token: string, context: { size: "narrow" | "compact" | "wide"; aspect: "portrait" | "wide" | "balanced" }): boolean {
+  if (token === context.size || token === context.aspect) return true;
+  if (token === "mobile" || token === "phone") return context.size === "narrow";
+  if (token === "desktop" || token === "tv") return context.size === "wide";
+  if (token === "landscape") return context.aspect !== "portrait";
+  return false;
 }
 
 function layoutAdaptiveGrid(element: HTMLElement, stageRoot: HTMLElement): void {
@@ -1051,7 +1204,14 @@ function resolveColorMode(theme: LensTheme): "light" | "dark" {
 }
 
 function runtimeAttrs(node: LensNode, component: string): string {
-  return `data-lens-key="${esc(node.key)}" data-lens-component="${esc(component)}"`;
+  const show = node.props.show ?? node.props.only;
+  const hide = node.props.hide ?? node.props.except;
+  return [
+    `data-lens-key="${esc(node.key)}"`,
+    `data-lens-component="${esc(component)}"`,
+    show ? `data-lens-show="${esc(show)}"` : "",
+    hide ? `data-lens-hide="${esc(hide)}"` : ""
+  ].filter(Boolean).join(" ");
 }
 
 function styleAttrs(node: LensNode, sheet: LightStyleSheet): string {
@@ -1398,7 +1558,25 @@ function renderTemplate(template: string, node: LensNode, sources: Record<string
   return html;
 }
 
-function executeHTMLComponentScripts(root: HTMLElement): void {
+function resolvedComponentPolicy(policy: LensComponentPolicy | undefined): Required<LensComponentPolicy> {
+  return { ...defaultComponentPolicy, ...(policy ?? {}) };
+}
+
+function applyHTMLComponentPolicy(html: string, policy: Required<LensComponentPolicy>): string {
+  let next = html;
+  if (!policy.allowHTMLScripts) next = next.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+  if (!policy.allowStyleTags) next = next.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "");
+  if (!policy.allowInlineEventHandlers) {
+    next = next
+      .replace(/\s+on[a-z]+\s*=\s*"[^"]*"/gi, "")
+      .replace(/\s+on[a-z]+\s*=\s*'[^']*'/gi, "")
+      .replace(/\s+on[a-z]+\s*=\s*[^\s>]+/gi, "");
+  }
+  return next;
+}
+
+function executeHTMLComponentScripts(root: HTMLElement, policy: Required<LensComponentPolicy>): void {
+  if (!policy.allowHTMLScripts) return;
   root.querySelectorAll<HTMLScriptElement>("script").forEach((script) => {
     const activeScript = document.createElement("script");
     for (const attribute of Array.from(script.attributes)) {

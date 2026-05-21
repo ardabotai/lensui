@@ -231,7 +231,7 @@ p {
   gap: 28px;
   align-items: center;
   min-height: calc(100svh - 74px);
-  padding: 38px 0 58px;
+  padding: clamp(22px, 4svh, 38px) 0 clamp(28px, 5svh, 50px);
 }
 
 .hero-copy .actions {
@@ -310,8 +310,10 @@ p {
   pointer-events: none;
 }
 
-.hero-stage-card .lensui-frame {
-  min-height: 520px;
+.hero-stage-card .lensui-frame,
+.hero-stage-card .hero-frame {
+  min-height: clamp(320px, 43svh, 390px);
+  max-height: min(48svh, 420px);
 }
 
 .lensui-frame {
@@ -325,7 +327,7 @@ p {
 .agent-stream-panel {
   display: grid;
   gap: 12px;
-  padding: 16px;
+  padding: 14px;
 }
 
 .stream-head {
@@ -355,6 +357,7 @@ pre {
 }
 
 .agent-stream-panel pre {
+  max-height: 112px;
   border: 0;
   background: transparent;
   color: #cdd8dc;
@@ -395,6 +398,7 @@ pre {
 
 .shift-section,
 .proof-section,
+.safety-section,
 .runtime-section,
 .bridge-section,
 .install-section,
@@ -458,6 +462,40 @@ pre {
 }
 
 .flow-compare span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.memory-loop,
+.safety-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.memory-loop article,
+.safety-grid article {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  border: 1px solid var(--line);
+  padding: 16px;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.04), transparent 48%),
+    rgb(8 10 12 / 0.9);
+}
+
+.memory-loop strong,
+.safety-grid strong {
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 18px;
+}
+
+.memory-loop span,
+.safety-grid span {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.55;
@@ -646,6 +684,23 @@ pre {
   flex-wrap: wrap;
 }
 
+.agent-bridge .bridge-actions button {
+  width: 100%;
+  text-align: center;
+}
+
+.lens-live-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  flex: 1;
+  gap: 12px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .lens-render-status {
   min-height: 28px;
   border: 1px solid var(--line);
@@ -675,6 +730,75 @@ pre {
 .lens-playground-view.active,
 .lens-playground-code.active {
   display: block;
+}
+
+.lens-playground.split .lens-playground-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+  min-height: 560px;
+}
+
+.lens-playground.split .lens-playground-view {
+  display: block;
+  border-right: 1px solid var(--line);
+}
+
+.lens-live-stream {
+  display: flex;
+  min-width: 0;
+  max-height: 760px;
+  overflow: auto;
+  flex-direction: column;
+  background:
+    linear-gradient(90deg, rgb(255 255 255 / 0.028) 1px, transparent 1px),
+    linear-gradient(0deg, rgb(255 255 255 / 0.026) 1px, transparent 1px),
+    #050607;
+  background-size: 28px 28px;
+}
+
+.lens-stream-entry {
+  display: grid;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding: 14px;
+}
+
+.lens-stream-entry.render,
+.lens-stream-entry.apply {
+  background: rgb(53 239 228 / 0.06);
+}
+
+.lens-stream-entry.source {
+  background: rgb(255 255 255 / 0.035);
+}
+
+.lens-stream-entry > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.lens-stream-entry strong {
+  color: var(--text);
+}
+
+.lens-stream-entry pre {
+  max-height: 330px;
+  overflow: auto;
+  margin: 0;
+  border: 1px solid var(--line);
+  padding: 12px;
+  background: rgb(0 0 0 / 0.34);
+  color: #e9f4f3;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
 }
 
 .lens-playground iframe {
@@ -757,6 +881,7 @@ pre {
 
 .bridge-fields {
   display: grid;
+  grid-template-columns: 1fr;
   gap: 8px;
 }
 
@@ -770,10 +895,11 @@ pre {
   text-overflow: ellipsis;
 }
 
-.bridge-prompt {
-  max-height: 220px;
-  padding: 12px;
-  font-size: 10px;
+.bridge-summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .bridge-copied {
@@ -829,10 +955,22 @@ pre {
   .hero-shell,
   .flow-compare,
   .token-proof,
+  .memory-loop,
+  .safety-grid,
   .runtime-intro,
   .demo-layout,
   .install-grid {
     grid-template-columns: 1fr;
+  }
+
+  .lens-live-toolbar,
+  .lens-playground.split .lens-playground-body {
+    grid-template-columns: 1fr;
+  }
+
+  .lens-playground.split .lens-playground-view {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
   }
 
   .hero-shell {
@@ -841,7 +979,8 @@ pre {
   }
 
   .hero-stage-card .lensui-frame {
-    min-height: 420px;
+    min-height: 340px;
+    max-height: 430px;
   }
 
   .site-header,
@@ -880,6 +1019,7 @@ pre {
 
   .shift-section,
   .proof-section,
+  .safety-section,
   .runtime-section,
   .bridge-section,
   .install-section,

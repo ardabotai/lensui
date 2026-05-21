@@ -20,6 +20,12 @@ export interface LightStylePackDefinition {
   trust?: LensComponentTrust;
 }
 
+export interface LensUISavedRegistry {
+  components: LensComponentDefinition[];
+  styles: LightStylePackDefinition[];
+  defaultStyle?: string;
+}
+
 export interface LensDataSource {
   id: string;
   url: string;
@@ -470,6 +476,24 @@ export class LensUIWorkspace {
     this.defaultStyle = cleanName;
   }
 
+  loadRegistry(registry: LensUISavedRegistry): void {
+    const next = new LensUIWorkspace(this.lightcode);
+    for (const component of registry.components) next.saveComponent(component);
+    for (const style of registry.styles) next.saveStyle(style);
+    if (registry.defaultStyle) next.setDefaultStyle(registry.defaultStyle);
+    this.components = next.components;
+    this.styles = next.styles;
+    this.defaultStyle = next.defaultStyle;
+  }
+
+  snapshotRegistry(): LensUISavedRegistry {
+    return {
+      components: this.components.slice(),
+      styles: this.styles.slice(),
+      defaultStyle: this.defaultStyle
+    };
+  }
+
   apply(stream: string | LensCommandStream): LensApplyResult {
     const commandStream = typeof stream === "string" ? parseCommandStream(stream) : stream;
     const next = new LensUIWorkspace(this.lightcode, this.components, this.styles, this.defaultStyle);
@@ -564,6 +588,37 @@ export class LensUIWorkspace {
       return `style|${style.name}|trust=${style.trust ?? "agent-generated"}${aliases}${options}${active}\n${numberedLines(style.source)}`;
     }).join("\n");
   }
+}
+
+export function emptySavedRegistry(): LensUISavedRegistry {
+  return { components: [], styles: [] };
+}
+
+export function normalizeSavedRegistry(value: unknown): LensUISavedRegistry {
+  const record = value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const workspace = new LensUIWorkspace();
+  workspace.components = [];
+  workspace.styles = [];
+  for (const component of Array.isArray(record.components) ? record.components : []) {
+    try {
+      const definition = componentDefinitionFromUnknown(component);
+      if (definition) workspace.saveComponent(definition);
+    } catch {}
+  }
+  for (const style of Array.isArray(record.styles) ? record.styles : []) {
+    try {
+      const definition = styleDefinitionFromUnknown(style);
+      if (definition) workspace.saveStyle(definition);
+    } catch {}
+  }
+  if (typeof record.defaultStyle === "string" && record.defaultStyle.trim()) {
+    try {
+      workspace.setDefaultStyle(record.defaultStyle);
+    } catch {}
+  }
+  return workspace.snapshotRegistry();
 }
 
 export function parseLightcode(source: string, components: LensComponentDefinition[] = [], styles: LightStylePackDefinition[] = [], defaultStyle?: string): LightcodeParseResult {
@@ -699,7 +754,7 @@ export function defaultTheme(): LensTheme {
     border: hsl(0, 0, 72),
     input: hsl(0, 0, 72),
     ring: hsl(0, 0, 12),
-    success: hsl(0, 0, 25),
+    success: hsl(152, 62, 34),
     warning: hsl(0, 0, 34),
     surfaceRaised: hsl(0, 0, 96)
   });
@@ -721,7 +776,7 @@ export function defaultTheme(): LensTheme {
     border: hsl(0, 0, 24),
     input: hsl(0, 0, 24),
     ring: hsl(0, 0, 96),
-    success: hsl(0, 0, 82),
+    success: hsl(150, 78, 54),
     warning: hsl(0, 0, 68),
     surfaceRaised: hsl(0, 0, 10)
   });
@@ -885,6 +940,76 @@ function componentTrust(value: string, line: number): LensComponentTrust {
   }
 }
 
+function componentDefinitionFromUnknown(value: unknown): LensComponentDefinition | undefined {
+  const record = objectRecord(value);
+  if (!record) return undefined;
+  const name = stringValue(record.name);
+  const source = stringValue(record.source);
+  const kind = componentKindValue(record.kind);
+  if (!name || !source || !kind) return undefined;
+  return {
+    name,
+    aliases: stringArray(record.aliases),
+    kind,
+    source,
+    options: stringRecord(record.options),
+    trust: componentTrustValue(record.trust) ?? "agent-generated"
+  };
+}
+
+function styleDefinitionFromUnknown(value: unknown): LightStylePackDefinition | undefined {
+  const record = objectRecord(value);
+  if (!record) return undefined;
+  const name = stringValue(record.name);
+  const source = stringValue(record.source);
+  if (!name || !source) return undefined;
+  return {
+    name,
+    aliases: stringArray(record.aliases),
+    source,
+    options: stringRecord(record.options),
+    trust: componentTrustValue(record.trust) ?? "agent-generated"
+  };
+}
+
+function componentKindValue(value: unknown): LensComponentKind | undefined {
+  switch (String(value ?? "").toLowerCase()) {
+    case "a": case "alias": return "alias";
+    case "h": case "html": return "html";
+    case "r": case "react": return "react";
+    case "s": case "swiftui": case "native": return "swiftui";
+    default: return undefined;
+  }
+}
+
+function componentTrustValue(value: unknown): LensComponentTrust | undefined {
+  switch (String(value ?? "").toLowerCase()) {
+    case "b": case "built-in": return "built-in";
+    case "u": case "user-saved": return "user-saved";
+    case "g": case "agent-generated": return "agent-generated";
+    case "m": case "remote-imported": return "remote-imported";
+    default: return undefined;
+  }
+}
+
+function objectRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())) : [];
+}
+
+function stringRecord(value: unknown): Record<string, string> {
+  const record = objectRecord(value);
+  if (!record) return {};
+  return Object.fromEntries(Object.entries(record).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
+}
+
 function patchSource(source: string, offset: number, deleteCount: number, insert = ""): string {
   const lines = source.split("\n");
   const maxOffset = lines.length + 1;
@@ -986,9 +1111,9 @@ function parseDataSource(fields: string[], line: number): LensDataSource {
   try {
     url = new URL(fields[2]);
   } catch {
-    throw new LensUIError("data source url must be http(s)", line);
+    throw new LensUIError("data source url must be a network URL", line);
   }
-  if (!["http:", "https:"].includes(url.protocol)) throw new LensUIError("data source url must be http(s)", line);
+  if (!["http:", "https:", "ws:", "wss:"].includes(url.protocol)) throw new LensUIError("data source url must be a network URL", line);
   let ttl = 600;
   let mode: LensLiveMode = "poll";
   for (const field of fields.slice(3)) {

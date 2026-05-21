@@ -1,6 +1,9 @@
 import { once } from "node:events";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { startLensBridge } from "./index";
+import { clearRegistryFile, loadRegistryFromFile, saveRegistryToFile, startLensBridge } from "./index";
 
 describe("@lensui/bridge", () => {
   it("routes authenticated render payloads to a scoped event stream", async () => {
@@ -61,6 +64,33 @@ describe("@lensui/bridge", () => {
     } finally {
       controller.abort();
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
+  it("persists LensUI registries to a local filesystem adapter", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lensui-registry-"));
+    try {
+      await saveRegistryToFile({
+        components: [
+          { name: "KPI", kind: "alias", trust: "agent-generated", source: "0M|tone=success" },
+          { name: "Bad Name", kind: "alias", source: "0M" }
+        ],
+        styles: [
+          { name: "MonoCompact", source: "0F|f=mono|d=compact\n0Y|panel|bg=card|bd=fg/28|p=4|r=2" }
+        ],
+        defaultStyle: "MonoCompact"
+      }, { cwd: dir });
+
+      const registry = await loadRegistryFromFile({ cwd: dir });
+      expect(registry.components).toHaveLength(1);
+      expect(registry.components[0]?.source).toContain("0@|KPI|M|tone=success");
+      expect(registry.styles[0]?.name).toBe("MonoCompact");
+      expect(registry.defaultStyle).toBe("MonoCompact");
+
+      await clearRegistryFile({ cwd: dir });
+      expect(await loadRegistryFromFile({ cwd: dir })).toEqual({ components: [], styles: [] });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 });

@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +11,37 @@ export type LensBridgeOptions = {
   host?: string;
   port?: number;
 };
+
+export type LensFileRegistryOptions = {
+  file?: string;
+  cwd?: string;
+};
+
+export type LensBridgeComponentKind = "alias" | "html" | "react" | "swiftui";
+export type LensBridgeComponentTrust = "built-in" | "user-saved" | "agent-generated" | "remote-imported";
+
+export interface LensBridgeComponentDefinition {
+  name: string;
+  aliases?: string[];
+  kind: LensBridgeComponentKind;
+  source: string;
+  options?: Record<string, string>;
+  trust?: LensBridgeComponentTrust;
+}
+
+export interface LensBridgeStyleDefinition {
+  name: string;
+  aliases?: string[];
+  source: string;
+  options?: Record<string, string>;
+  trust?: LensBridgeComponentTrust;
+}
+
+export interface LensUISavedRegistry {
+  components: LensBridgeComponentDefinition[];
+  styles: LensBridgeStyleDefinition[];
+  defaultStyle?: string;
+}
 
 type LensBridgeClient = {
   id: string;
@@ -25,6 +57,30 @@ type BridgeMessage =
 const defaultHost = "127.0.0.1";
 const defaultPort = 5743;
 const maxBodyBytes = 512 * 1024;
+const defaultRegistryRelativePath = ".lensui/registry.json";
+
+export function defaultLensRegistryPath(options: LensFileRegistryOptions = {}): string {
+  return resolve(options.cwd ?? process.cwd(), options.file ?? defaultRegistryRelativePath);
+}
+
+export async function loadRegistryFromFile(options: LensFileRegistryOptions = {}): Promise<LensUISavedRegistry> {
+  try {
+    const raw = await readFile(defaultLensRegistryPath(options), "utf8");
+    return normalizeSavedRegistry(JSON.parse(raw));
+  } catch {
+    return emptySavedRegistry();
+  }
+}
+
+export async function saveRegistryToFile(registry: LensUISavedRegistry, options: LensFileRegistryOptions = {}): Promise<void> {
+  const file = defaultLensRegistryPath(options);
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, `${JSON.stringify(normalizeSavedRegistry(registry), null, 2)}\n`, "utf8");
+}
+
+export async function clearRegistryFile(options: LensFileRegistryOptions = {}): Promise<void> {
+  await rm(defaultLensRegistryPath(options), { force: true });
+}
 
 export function startLensBridge(options: LensBridgeOptions = {}) {
   const host = options.host ?? defaultHost;
@@ -180,6 +236,117 @@ async function readBody(request: IncomingMessage): Promise<string> {
   }
   return Buffer.concat(chunks).toString("utf8");
 }
+
+function emptySavedRegistry(): LensUISavedRegistry {
+  return { components: [], styles: [] };
+}
+
+function normalizeSavedRegistry(value: unknown): LensUISavedRegistry {
+  const record = objectRecord(value) ?? {};
+  const components = (Array.isArray(record.components) ? record.components : [])
+    .map(componentFromUnknown)
+    .filter((component): component is LensBridgeComponentDefinition => Boolean(component));
+  const styles = (Array.isArray(record.styles) ? record.styles : [])
+    .map(styleFromUnknown)
+    .filter((style): style is LensBridgeStyleDefinition => Boolean(style));
+  const registry: LensUISavedRegistry = { components: dedupeByName(components), styles: dedupeByName(styles) };
+  const defaultStyle = typeof record.defaultStyle === "string" ? record.defaultStyle.trim() : "";
+  if (defaultStyle && (registry.styles.some((style) => matchesName(style, defaultStyle)) || builtinStyleNames.has(defaultStyle.toLowerCase()))) {
+    registry.defaultStyle = defaultStyle;
+  }
+  return registry;
+}
+
+function componentFromUnknown(value: unknown): LensBridgeComponentDefinition | undefined {
+  const record = objectRecord(value);
+  if (!record) return undefined;
+  const name = validName(record.name);
+  const kind = componentKind(record.kind);
+  const source = typeof record.source === "string" ? record.source.trim() : "";
+  if (!name || !kind || !source) return undefined;
+  const aliases = stringArray(record.aliases).map(validName).filter((alias): alias is string => Boolean(alias));
+  return {
+    name,
+    aliases,
+    kind,
+    source: kind === "alias" ? normalizedAliasSource(name, aliases, source) : source,
+    options: stringRecord(record.options),
+    trust: componentTrust(record.trust) ?? "agent-generated"
+  };
+}
+
+function styleFromUnknown(value: unknown): LensBridgeStyleDefinition | undefined {
+  const record = objectRecord(value);
+  if (!record) return undefined;
+  const name = validName(record.name);
+  const source = typeof record.source === "string" ? record.source.trim() : "";
+  if (!name || !source) return undefined;
+  return {
+    name,
+    aliases: stringArray(record.aliases).map(validName).filter((alias): alias is string => Boolean(alias)),
+    source,
+    options: stringRecord(record.options),
+    trust: componentTrust(record.trust) ?? "agent-generated"
+  };
+}
+
+function normalizedAliasSource(name: string, aliases: string[], source: string): string {
+  const first = source.split("\n").find((line) => line.trim());
+  if (!first) return source;
+  const body = first[0] && /^[0-9a-z]/.test(first[0]) ? first.slice(1) : first;
+  if (body.startsWith("@|") || body.startsWith("def|") || body.startsWith("alias|")) return source;
+  return `0@|${[name, ...aliases].join(",")}|${body}`;
+}
+
+function componentKind(value: unknown): LensBridgeComponentKind | undefined {
+  switch (String(value ?? "").toLowerCase()) {
+    case "a": case "alias": return "alias";
+    case "h": case "html": return "html";
+    case "r": case "react": return "react";
+    case "s": case "swiftui": case "native": return "swiftui";
+    default: return undefined;
+  }
+}
+
+function componentTrust(value: unknown): LensBridgeComponentTrust | undefined {
+  switch (String(value ?? "").toLowerCase()) {
+    case "b": case "built-in": return "built-in";
+    case "u": case "user-saved": return "user-saved";
+    case "g": case "agent-generated": return "agent-generated";
+    case "m": case "remote-imported": return "remote-imported";
+    default: return undefined;
+  }
+}
+
+function validName(value: unknown): string | undefined {
+  const name = typeof value === "string" ? value.trim() : "";
+  return /^[A-Za-z0-9_-]+$/.test(name) ? name : undefined;
+}
+
+function objectRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim())) : [];
+}
+
+function stringRecord(value: unknown): Record<string, string> {
+  const record = objectRecord(value);
+  if (!record) return {};
+  return Object.fromEntries(Object.entries(record).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
+}
+
+function dedupeByName<T extends { name: string }>(values: T[]): T[] {
+  return Array.from(new Map(values.map((value) => [value.name.toLowerCase(), value])).values());
+}
+
+function matchesName(value: { name: string; aliases?: string[] }, name: string): boolean {
+  const lower = name.toLowerCase();
+  return value.name.toLowerCase() === lower || (value.aliases ?? []).some((alias) => alias.toLowerCase() === lower);
+}
+
+const builtinStyleNames = new Set(["neutral", "mono", "studio", "paper", "gallery", "terminal"]);
 
 function writeJSON(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, { "content-type": "application/json; charset=utf-8" });

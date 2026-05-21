@@ -55,7 +55,7 @@ Setup:
 First render, to prove the connection works:
 ${curlRender(bridgeOrigin, lensID, token)}
 
-After that, keep rendering compact LensUI lightcode to the same endpoint. Use semantic LensUI nodes, not HTML/React/CSS, unless you explicitly save a trusted component.`;
+After that, keep rendering compact LensUI lightcode to the same endpoint. Use semantic LensUI nodes for common UI. When you need custom HTML, CSS, JavaScript, canvas, D3, Three.js, or app-like interaction, save a component once and then refer to it by name in later renders so the browser/container can persist and reuse it.`;
 }
 
 async function copy(value: string): Promise<void> {
@@ -94,8 +94,6 @@ export function AgentBridgePanel({
   }, [bridgeOrigin, lensID, shouldConnect, token]);
 
   const prompt = useMemo(() => agentInstructions(bridgeOrigin, lensID, token), [bridgeOrigin, lensID, token]);
-  const bridgeCommand = `npx -y --package @ardabot/lensui@latest lensui bridge --port ${new URL(bridgeOrigin).port || "5743"}`;
-  const helloCommand = useMemo(() => curlRender(bridgeOrigin, lensID, token), [bridgeOrigin, lensID, token]);
 
   useEffect(() => {
     if (!eventURL) return;
@@ -127,12 +125,17 @@ export function AgentBridgePanel({
     window.setTimeout(() => setCopied(""), 1400);
   }
 
+  async function copyPrompt() {
+    setShouldConnect(true);
+    await copyValue("agent instructions", prompt);
+  }
+
   return (
     <div className="agent-bridge" data-bridge-origin={bridgeOrigin} data-lens-id={lensID} data-lens-token={token}>
       <div className="agent-bridge-head">
         <div>
-          <strong>Live agent target.</strong>
-          <span>Paste these instructions into Claude Code or another local agent.</span>
+          <strong>Send lightcode from your agent.</strong>
+          <span>One paste starts the bridge, installs the skill, and targets this live container.</span>
         </div>
         <span className={`bridge-pill ${status}`}>{status}</span>
       </div>
@@ -143,8 +146,8 @@ export function AgentBridgePanel({
           <code>{lensID}</code>
         </label>
         <label>
-          <span>token</span>
-          <code>{token === "pending" ? token : `${token.slice(0, 8)}...${token.slice(-6)}`}</code>
+          <span>bridge</span>
+          <code>{bridgeOrigin}</code>
         </label>
         <label>
           <span>messages</span>
@@ -153,13 +156,12 @@ export function AgentBridgePanel({
       </div>
 
       <div className="bridge-actions">
-        <button onClick={() => setShouldConnect(true)} type="button">Connect bridge</button>
-        <button onClick={() => copyValue("bridge", bridgeCommand)} type="button">Copy bridge command</button>
-        <button onClick={() => copyValue("hello", helloCommand)} type="button">Copy hello render</button>
-        <button className="primary" onClick={() => copyValue("prompt", prompt)} type="button">Copy agent prompt</button>
+        <button className="primary" disabled={lensID === "pending" || token === "pending"} onClick={copyPrompt} type="button">
+          Copy agent instructions
+        </button>
       </div>
 
-      <pre className="bridge-prompt"><code>{prompt}</code></pre>
+      <p className="bridge-summary">Incoming renders append to the lightcode stream beside the live UI.</p>
       {copied ? <span className="bridge-copied">Copied {copied}</span> : null}
     </div>
   );

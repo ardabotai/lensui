@@ -61,8 +61,8 @@ await build({
 
 await writeFile(resolve(outdir, "index.d.ts"), [
   'export * from "./core.js";',
-  'export { BrowserLensStageRuntime, LensHTMLRenderer, createStageRuntime } from "./html.js";',
-  'export type { LensStageRuntime, LensStageSizeDetail, LensStageSizingMode } from "./html.js";',
+  'export { BrowserLensStageRuntime, LensHTMLRenderer, createPersistentStageRuntime, createStageRuntime } from "./html.js";',
+  'export type { LensComponentPolicy, LensRegistryPersistenceOptions, LensRegistryStorage, LensStageRuntime, LensStageRuntimeOptions, LensStageSizeDetail, LensStageSizingMode } from "./html.js";',
   'export { LensClientConnection } from "./client.js";',
   'export type { LensClientOptions } from "./client.js";',
   'export { LensMCPBridge } from "./mcp-server.js";',

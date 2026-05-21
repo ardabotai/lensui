@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LensHTMLRenderer } from "./index";
+import { LensHTMLRenderer, clearRegistryFromLocalStorage, loadRegistryFromLocalStorage, saveRegistryToLocalStorage, type LensRegistryStorage } from "./index";
 
 describe("@lensui/html", () => {
   it("renders the default ready surface with adaptive primitives", () => {
@@ -11,6 +11,30 @@ describe("@lensui/html", () => {
     expect(result.html).toContain(`data-lens-adaptive-grid`);
     expect(result.html).toContain(`data-min-cell-width="150"`);
     expect(result.html).toContain(`data-max-cols="3"`);
+  });
+
+  it("persists saved component registries through a storage adapter", () => {
+    const storage = memoryStorage();
+    saveRegistryToLocalStorage({
+      components: [
+        { name: "KPI", kind: "alias", trust: "agent-generated", source: "0M|tone=success" },
+        { name: "Unsafe Name", kind: "alias", source: "0M" }
+      ],
+      styles: [
+        { name: "MonoCompact", source: "0F|f=mono|d=compact\n0Y|panel|bg=card|bd=fg/28|p=4|r=2" }
+      ],
+      defaultStyle: "MonoCompact"
+    }, { key: "test:lensui", storage });
+
+    const registry = loadRegistryFromLocalStorage({ key: "test:lensui", storage });
+    expect(registry.components).toHaveLength(1);
+    expect(registry.components[0]?.name).toBe("KPI");
+    expect(registry.components[0]?.source).toContain("0@|KPI|M|tone=success");
+    expect(registry.styles[0]?.name).toBe("MonoCompact");
+    expect(registry.defaultStyle).toBe("MonoCompact");
+
+    clearRegistryFromLocalStorage({ key: "test:lensui", storage });
+    expect(loadRegistryFromLocalStorage({ key: "test:lensui", storage }).components).toEqual([]);
   });
 
   it("renders core built-ins and metadata", () => {
@@ -63,6 +87,29 @@ describe("@lensui/html", () => {
     expect(result.html).toContain("Hello");
     expect(result.html).toContain("<script>");
     expect(result.html).toContain("onclick");
+  });
+
+  it("lets hosts restrict raw html component capabilities when needed", () => {
+    const result = new LensHTMLRenderer({
+      componentPolicy: {
+        allowHTMLScripts: false,
+        allowInlineEventHandlers: false,
+        allowStyleTags: false
+      }
+    }).render("0V|Custom\n1Tile|Hello", [
+      {
+        name: "Tile",
+        kind: "html",
+        trust: "agent-generated",
+        source: "<style>.x{color:red}</style><section onclick=\"bad()\">{{0}}<script>bad()</script></section>"
+      }
+    ]);
+
+    expect(result.html).toContain("<section");
+    expect(result.html).toContain("Hello");
+    expect(result.html).not.toContain("<script>");
+    expect(result.html).not.toContain("onclick");
+    expect(result.html).not.toContain("<style>");
   });
 
   it("honors documented adaptive grids and unresolved live repeaters", () => {
@@ -273,3 +320,18 @@ describe("@lensui/html", () => {
     expect(studio.html).toContain(`background:hsl(var(--primary))`);
   });
 });
+
+function memoryStorage(): LensRegistryStorage {
+  const values = new Map<string, string>();
+  return {
+    getItem(key: string) {
+      return values.get(key) ?? null;
+    },
+    setItem(key: string, value: string) {
+      values.set(key, value);
+    },
+    removeItem(key: string) {
+      values.delete(key);
+    }
+  };
+}

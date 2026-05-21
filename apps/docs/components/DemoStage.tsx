@@ -105,6 +105,7 @@ export function DemoStage() {
           externalRender={active === "live" ? externalRender : undefined}
           height={560}
           lightcode={samples[active].lightcode}
+          mode={active === "live" ? "split" : "tabs"}
           title="LensUI demo render"
         />
       </section>

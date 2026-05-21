@@ -15,7 +15,7 @@ LensUI is a token-efficient UI runtime for agents. Generate semantic lightcode p
 3. Put `0F|0` first unless preserving an existing frame line. Every render should carry its visual frame as lightcode.
 4. Prefix every lightcode line with a base36 depth token. Do not indent.
 5. Prefer short semantic built-ins, compact `items=` rows, and compact `0Y` style recipes.
-6. Use saved style packs for durable art direction. Use saved components only when built-ins cannot express the UI compactly.
+6. Use saved style packs for durable art direction. Save reusable components when built-ins cannot express the UI compactly, then instantiate them by short name in later turns.
 7. For live values, render stable bindings once, then update source snapshots. Do not resend the whole stage just to tick a value or chart.
 8. Treat LensUI as screen-size and aspect-ratio agnostic. Use semantic adaptive containers and never depend on a specific phone, laptop, or TV viewport.
 9. If a parse/render error returns, fix the invalid line or depth sequence and retry once.
@@ -35,6 +35,7 @@ LensUI is a token-efficient UI runtime for agents. Generate semantic lightcode p
 - Use `$id.path` only for known data sources. Literal dollar amounts like `$28.40` are not bindings.
 - Live data uses the same binding syntax. Hosts push updates with `setSource(id, payload)`; bound metrics, rows, charts, progress, and status components update in place.
 - Containers are adaptive by default. Prefer `G|auto|min=160-240|max=2-4` for repeated items; the runtime will collapse columns by actual container width and aspect ratio. Host apps choose `data-lens-sizing="stage"` for fixed stages with scroll fallback, or `data-lens-sizing="auto"` for embeds that resize around the rendered content.
+- Components can opt into runtime visibility with `show=` and `hide=` tokens such as `show=wide`, `show=narrow,portrait`, `hide=narrow`, or `hide=portrait`. Use this for genuinely optional detail, not for primary content.
 
 Minimal render:
 
@@ -213,9 +214,11 @@ save_component(name="KPI", kind="alias", source="1M|tone=success")
 render("0F|0\n0V|Market\n1KPI|ETH|$4100|spot")
 ```
 
-Use `kind=html` only for genuinely custom interactive or animated components that built-ins cannot express. Save it once, then instantiate it by name with short args/props.
+Use `kind=html` or `kind=react` for genuinely custom interactive or animated components that built-ins cannot express. Save it once, then instantiate it by name with short args/props. A persistent host can store saved components in localStorage, local files, or another adapter, so future turns can reuse the component without resending the full HTML/JS/CSS source.
 
 JavaScript rule: JS belongs in saved components, not normal render payloads. For custom interaction, animation, D3, Three.js, canvas, or app-like widgets, call `save_component(kind="html"|"react")`, then render the saved name with short args/props. Small interactions should use renderer-owned built-ins or style tokens.
+
+Safety stance: raw HTML/CSS/JS components are a power feature and may be enabled by default in permissive hosts. Do not put secrets, auth tokens, billing logic, credential collection, destructive effects, or privileged host calls inside component code. If an action needs external side effects, route it through host-owned tools or APIs that can validate, gate, and confirm it. Assume host policy may reject or sandbox raw components; if that happens, fall back to semantic built-ins or ask the host to promote a reviewed component.
 
 Saved style:
 

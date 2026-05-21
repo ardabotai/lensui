@@ -25,7 +25,7 @@ type LensStageHandle = {
   render(lightcode: string, components?: unknown[]): LensApplyResult;
   apply(commandStream: string): LensApplyResult;
   setSource(id: string, payload: unknown): boolean;
-  read(kind: "lightcode" | "components" | "metadata" | "status"): unknown;
+  read(kind: "lightcode" | "components" | "styles" | "registry" | "metadata" | "status"): unknown;
 };
 
 declare global {
@@ -396,6 +396,60 @@ R
     expect(health.errors).toEqual([]);
   });
 
+  test("persists saved components and toggles responsive visibility by container size", async ({ page }) => {
+    const health = collectPageHealth(page);
+
+    await page.setViewportSize({ width: 900, height: 720 });
+    await page.goto(stageURL);
+    await waitForLensStage(page);
+
+    const applied = await page.evaluate(() => {
+      window.localStorage.removeItem("e2e:lensui:registry");
+      (window.lensStage as any).enablePersistence({ key: "e2e:lensui:registry" });
+      const result = window.lensStage!.apply(`!
+@!|KPI|a|g
+0M|tone=success
+.
+R
+0F|st=mono
+0V|Responsive Registry|Saved component
+1G|auto|min=180|max=2
+2KPI|Wide metric|visible|show=wide
+2KPI|Small metric|visible|show=narrow,portrait
+.`);
+      return {
+        result,
+        registry: JSON.parse(window.localStorage.getItem("e2e:lensui:registry") ?? "{}")
+      };
+    });
+
+    expect(applied.result.ok, applied.result.error).toBe(true);
+    expect(applied.registry.components?.[0]?.name).toBe("KPI");
+    await expect(page.getByText("Wide metric")).toBeVisible();
+    await expect(page.getByText("Small metric")).toBeHidden();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator("#lens-stage-root")).toHaveAttribute("data-lens-size", "narrow");
+    await expect(page.getByText("Wide metric")).toBeHidden();
+    await expect(page.getByText("Small metric")).toBeVisible();
+
+    const reused = await page.evaluate(() => {
+      const second = document.createElement("div");
+      second.dataset.lensStage = "1";
+      second.dataset.lensSizing = "auto";
+      second.style.width = "420px";
+      second.style.height = "320px";
+      document.body.appendChild(second);
+      const runtime = (window as any).LensUIBundle.createStageRuntime(second, { persistence: { key: "e2e:lensui:registry" } });
+      return runtime.render("0F|st=mono\n0V|Reused Component\n1KPI|Loaded|from storage");
+    });
+
+    expect(reused.ok, reused.error).toBe(true);
+    await expect(page.getByText("Reused Component")).toBeVisible();
+    await expect(page.getByText("Loaded")).toBeVisible();
+    expect(health.errors).toEqual([]);
+  });
+
   test("applies source update messages from command streams", async ({ page }) => {
     const health = collectPageHealth(page);
 
@@ -468,6 +522,8 @@ R
     await expect(demoFrame.locator("#lens-stage-root")).toBeVisible();
     await expect(demoFrame.getByText("Crypto Live Tape")).toBeVisible();
 
+    await page.getByRole("button", { name: "brief" }).click();
+    await expect(demoFrame.getByText("Live Brief")).toBeVisible();
     await demo.getByRole("tab", { name: "Lightcode" }).click();
     const editor = demo.getByLabel("LensUI demo render editable lightcode");
     await expect(editor).toBeVisible();
@@ -475,7 +531,7 @@ R
  1M|Broken|bad indent`);
     await demo.getByRole("button", { name: "Render" }).click();
     await expect(demo.getByText("Render failed").first()).toBeVisible();
-    await expect(demoFrame.getByText("Crypto Live Tape")).toBeVisible();
+    await expect(demoFrame.getByText("Live Brief")).toBeVisible();
 
     await demo.getByRole("tab", { name: "Lightcode" }).click();
     await editor.fill(`0F|st=mono
@@ -503,7 +559,7 @@ R
     await expect(header.getByRole("link", { name: "npm", exact: true })).toHaveAttribute("href", "https://www.npmjs.com/package/@ardabot/lensui");
     await expect(header.getByRole("link", { name: "GitHub", exact: true })).toHaveAttribute("href", "https://github.com/ardabotai/lensui");
     await expect(page.getByText("npm install @ardabot/lensui")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "The old loop generates code. LensUI changes the running interface.", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "The old loop generates code. LensUI grows a live interface.", exact: true })).toBeVisible();
     const heroFrame = page.frameLocator('iframe[title="LensUI live runtime preview"]');
     await expect(heroFrame.locator("#lens-stage-root")).toBeVisible();
     await expect(heroFrame.getByText("Crypto Live Tape")).toBeVisible();
@@ -543,6 +599,14 @@ R
       });
       expect(playgroundLayout.iframeHeight).toBeGreaterThan(560);
       expect(playgroundLayout.footerTop).toBeGreaterThanOrEqual(playgroundLayout.iframeBottom - 1);
+      await expect(page.locator(".demo-stage .lens-live-stream")).toBeVisible();
+      await expect(page.locator(".demo-stage .lens-live-stream").getByText("initial lightcode")).toBeVisible();
+      await expect(page.locator(".demo-stage .lens-live-stream").getByText("source update: market")).toBeVisible();
+      await expect(page.locator(".demo-stage .lens-live-stream").getByText("S|market|application/json")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Connect bridge" })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Copy bridge command" })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Copy hello render" })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Copy agent instructions" })).toBeVisible();
       await expect(demoFrame.locator('[data-lens-component="metric"]').filter({ hasText: "BTC/USD" })).toBeVisible();
       await expect(demoFrame.getByText("BTC 3H / 5M")).toBeVisible();
       const firstLiveText = await demoFrame.locator("body").innerText();
@@ -569,6 +633,8 @@ R
       });
       expect(helloResponse.status).toBe(200);
       await expect(demoFrame.getByText("Hello from your agent")).toBeVisible();
+      await expect(page.locator(".demo-stage .lens-live-stream").getByText("bridge render")).toBeVisible();
+      await expect(page.locator(".demo-stage .lens-live-stream").getByText("Hello from your agent")).toBeVisible();
 
       await page.getByRole("button", { name: "gallery" }).click();
       demoFrame = page.frameLocator('iframe[title="LensUI demo render"]');

@@ -19,7 +19,7 @@ Subpath exports:
 - `@ardabot/lensui/client` - optional WebSocket client for receiving command streams from a host.
 - `@ardabot/lensui/mcp-server` - optional session-bound MCP bridge for applying lightcode to connected clients.
 - `@ardabot/lensui/byok` - optional local/dev BYOK inference adapter. This is not part of core rendering.
-- `@ardabot/lensui/bridge` - local loopback bridge that lets coding agents send lightcode into a live browser LensUI container.
+- `@ardabot/lensui/bridge` - local loopback bridge that lets coding agents send lightcode into a live browser LensUI container, plus filesystem registry helpers for local hosts.
 - `@ardabot/lensui/skill` - packaged agent instructions for generating and repairing LensUI lightcode.
 
 LensUI core and HTML packages contain no provider SDKs, auth, billing, memory, voice, WebKit, or host tool code.
@@ -37,10 +37,10 @@ npm install @ardabot/lensui
 Mount a runtime and render compact lightcode:
 
 ```ts
-import { createStageRuntime } from "@ardabot/lensui/html";
+import { createPersistentStageRuntime } from "@ardabot/lensui/html";
 
 const root = document.querySelector<HTMLElement>("#lens-stage-mount");
-const stage = createStageRuntime(root!);
+const stage = createPersistentStageRuntime(root!);
 
 stage.setSource("markets", { bitcoin: { usd: 76448 }, ethereum: { usd: 2098 } });
 
@@ -61,6 +61,8 @@ Rendered by the browser runtime:
 For script-tag usage, copy or serve `node_modules/@ardabot/lensui/dist/lensui.stage.global.js`, add `<div id="lens-stage-mount"></div>`, and call `window.lensStage.render(...)`. Fixed app surfaces can use the default `stage` sizing; iframe/card embeds can opt into content-driven sizing with `<div id="lens-stage-mount" data-lens-sizing="auto"></div>`.
 
 For agents, run `npx -y --package @ardabot/lensui@latest lensui skill` or use [`skills/lensui/SKILL.md`](./skills/lensui/SKILL.md) as the canonical instruction source for lightcode, LightStyle, compact rows, patching, and component repair.
+
+`createPersistentStageRuntime` loads and saves the component/style registry in `localStorage` by default. That lets agents save a component once, then refer to it by name in later renders instead of resending full HTML, CSS, or JavaScript. Browser hosts can pass a custom key with `createPersistentStageRuntime(root, { persistence: { key: "my-app:lensui" } })`. Native or Node adapters can persist the same `LensUISavedRegistry` shape to local files; `@ardabot/lensui/bridge` exports `loadRegistryFromFile` and `saveRegistryToFile` for local filesystem hosts.
 
 ## Live Agent Demo
 
@@ -172,7 +174,11 @@ interface LensStageRuntime {
   deleteStyle(name: string): LensApplyResult;
   setDefaultStyle(name?: string): LensApplyResult;
   setSource(id: string, payload: unknown): boolean;
-  read(kind: "lightcode" | "components" | "styles" | "metadata" | "status"): unknown;
+  read(kind: "lightcode" | "components" | "styles" | "registry" | "metadata" | "status"): unknown;
+  loadRegistry(registry: LensUISavedRegistry): LensApplyResult;
+  enablePersistence(options?: LensRegistryPersistenceOptions): LensStageRuntime;
+  persistRegistry(options?: LensRegistryPersistenceOptions): void;
+  clearPersistedRegistry(options?: LensRegistryPersistenceOptions): void;
 }
 ```
 
@@ -231,7 +237,11 @@ Source updates re-resolve `$source.path` bindings in metrics, charts, lists, sta
 
 LensUI validates lightcode before committing render state. Failed renders leave the previous UI intact.
 
-The renderer does not store provider tokens, does not perform billing, and does not own host permissions. Saved components are classified by trust level:
+The uncomfortable part is real: LensUI can run agent-authored HTML, CSS, and JavaScript components. That is intentionally on by default because raw components are the path to maximum expressiveness. Treat those components like untrusted plugin code unless your host has reviewed or promoted them.
+
+The renderer does not store provider tokens, does not perform billing, and does not own host permissions. Browser security boundaries, CSP, sandboxed iframes, isolated origins, approval hooks, component allowlists, and host-owned capability brokers are the right places to decide what a given app will accept. Keep secrets, billing, auth, and privileged effects out of frontend components; route sensitive actions through host APIs that can validate and confirm them.
+
+Saved components are classified by trust level:
 
 - `built-in`
 - `user-saved`
@@ -239,6 +249,8 @@ The renderer does not store provider tokens, does not perform billing, and does 
 - `remote-imported`
 
 JavaScript belongs in saved components, not ordinary render lightcode. Hosts can allow `html` or `react` components for rich custom behavior, but normal agent turns should instantiate those components by short name so token cost, cleanup, and patching stay manageable.
+
+Hosts that need a stricter posture can pass `componentPolicy` to `createStageRuntime` or `createPersistentStageRuntime` to disable HTML components, scripts, inline event handlers, or style tags.
 
 Provider inference should normally live in a host or gateway. The optional BYOK adapter is for local/dev/self-hosted use where the user intentionally supplies their own provider endpoint and token.
 

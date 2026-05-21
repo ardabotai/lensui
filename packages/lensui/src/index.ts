@@ -2,10 +2,15 @@ export * from "../../core/src/index";
 export {
   BrowserLensStageRuntime,
   LensHTMLRenderer,
+  createPersistentStageRuntime,
   createStageRuntime
 } from "../../html/src/index";
 export type {
+  LensComponentPolicy,
+  LensRegistryPersistenceOptions,
+  LensRegistryStorage,
   LensStageRuntime,
+  LensStageRuntimeOptions,
   LensStageSizeDetail,
   LensStageSizingMode
 } from "../../html/src/index";

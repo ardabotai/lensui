@@ -459,6 +459,7 @@ R
     test.setTimeout(90_000);
     const health = collectPageHealth(page);
 
+    await mockCoinbaseMarketRoutes(page);
     await page.goto(siteOrigin);
     await expect(page.getByRole("heading", { name: "Try the running surface.", exact: true })).toBeVisible();
 
@@ -491,6 +492,7 @@ R
     test.setTimeout(90_000);
     const health = collectPageHealth(page);
 
+    await mockCoinbaseMarketRoutes(page);
     await page.goto(siteOrigin);
     await expect(page.getByRole("heading", { name: "Live UI generation, already running.", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Why", exact: true })).toBeVisible();
@@ -520,7 +522,10 @@ R
       await expect(demoFrame.locator("#lens-stage-root")).toHaveAttribute("data-lens-sizing", "auto");
       await expect(demoFrame.locator("#lens-stage-root")).toHaveAttribute("data-lens-flow", "auto");
       await expect(demoFrame.getByText("Crypto Live Tape")).toBeVisible();
-      await expect(demoFrame.locator("[data-lens-scene]")).toHaveAttribute("data-scene-kind", "shader");
+      await expect(demoFrame.locator("[data-lens-scene]")).toHaveCount(0);
+      await expect(demoFrame.locator("[data-lens-candle-chart]")).toHaveCount(3);
+      await expect(demoFrame.getByText("Recent tape")).toBeVisible();
+      await expect(demoFrame.getByText("Feed health")).toBeVisible();
       await page.waitForFunction(() => {
         const iframe = document.querySelector<HTMLIFrameElement>('iframe[title="LensUI demo render"]');
         return Boolean(iframe && iframe.getBoundingClientRect().height > 560);
@@ -538,7 +543,8 @@ R
       });
       expect(playgroundLayout.iframeHeight).toBeGreaterThan(560);
       expect(playgroundLayout.footerTop).toBeGreaterThanOrEqual(playgroundLayout.iframeBottom - 1);
-      await expect(demoFrame.getByText("BTC/USD")).toBeVisible();
+      await expect(demoFrame.locator('[data-lens-component="metric"]').filter({ hasText: "BTC/USD" })).toBeVisible();
+      await expect(demoFrame.getByText("BTC 3H / 5M")).toBeVisible();
       const firstLiveText = await demoFrame.locator("body").innerText();
       await expect.poll(async () => page.frameLocator('iframe[title="LensUI demo render"]').locator("body").innerText(), { timeout: 8000 }).not.toBe(firstLiveText);
       const secondLiveText = await demoFrame.locator("body").innerText();
@@ -582,6 +588,7 @@ R
     const health = collectPageHealth(page);
 
     await page.setViewportSize({ width: 390, height: 1200 });
+    await mockCoinbaseMarketRoutes(page);
     await page.goto(siteOrigin);
     await expect(page.getByRole("heading", { name: "Live UI generation, already running.", exact: true })).toBeVisible();
 
@@ -616,6 +623,58 @@ function collectPageHealth(page: Page): { errors: string[] } {
     errors.push(error.message);
   });
   return { errors };
+}
+
+async function mockCoinbaseMarketRoutes(page: Page): Promise<void> {
+  let tick = 0;
+  const bases: Record<string, number> = {
+    "BTC-USD": 104250,
+    "ETH-USD": 3820,
+    "SOL-USD": 188
+  };
+  const drift: Record<string, number> = {
+    "BTC-USD": 11,
+    "ETH-USD": -1.4,
+    "SOL-USD": 0.18
+  };
+
+  await page.route("https://api.coinbase.com/v2/prices/**/spot", async (route) => {
+    tick += 1;
+    const product = productFromURL(route.request().url()) ?? "BTC-USD";
+    const amount = (bases[product] ?? 100) + tick * (drift[product] ?? 0.2);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          base: product.split("-")[0],
+          currency: "USD",
+          amount: amount.toFixed(product === "SOL-USD" ? 3 : 2)
+        }
+      })
+    });
+  });
+
+  await page.route("https://api.exchange.coinbase.com/products/**/candles**", async (route) => {
+    const product = productFromURL(route.request().url()) ?? "BTC-USD";
+    const base = bases[product] ?? 100;
+    const step = drift[product] ?? 0.2;
+    const end = Math.floor(Date.now() / 300000) * 300;
+    const rows = Array.from({ length: 36 }, (_, index) => {
+      const t = end - (35 - index) * 300;
+      const open = base + index * step + Math.sin(index / 3) * Math.abs(step) * 2;
+      const close = open + Math.cos(index / 2) * Math.abs(step) * 1.6;
+      const high = Math.max(open, close) + Math.abs(step) * 2.4;
+      const low = Math.min(open, close) - Math.abs(step) * 2.2;
+      return [t, Number(low.toFixed(4)), Number(high.toFixed(4)), Number(open.toFixed(4)), Number(close.toFixed(4)), 12 + index];
+    });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(rows) });
+  });
+}
+
+function productFromURL(rawURL: string): string | undefined {
+  const match = rawURL.match(/(?:prices|products)\/([^/?]+)(?:\/spot)?/);
+  return match?.[1];
 }
 
 async function waitForLensStage(page: Page): Promise<void> {

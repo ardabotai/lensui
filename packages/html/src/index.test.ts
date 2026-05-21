@@ -174,6 +174,32 @@ describe("@lensui/html", () => {
     expect(result.html).toContain("No more rows");
   });
 
+  it("renders live-market direction metrics and compact candlestick charts", () => {
+    const renderer = new LensHTMLRenderer();
+    renderer.setSource("market", {
+      btc: "$100.25",
+      btcMove: "▲ 0.250%",
+      btcTone: "success",
+      btcFlash: "success",
+      candles: "09:00,100,104,99,103;09:05,103,105,101,102;09:10,102,106,101,105"
+    });
+
+    const result = renderer.render(`0DS|market|https://example.com/market.json
+0F|st=studio
+0V|Crypto
+1M|BTC/USD|$market.btc|$market.btcMove|tone=$market.btcTone|flash=$market.btcFlash
+1H|candle|$market.candles|BTC 3H / 5M|h=180`);
+
+    expect(result.html).toContain(`data-lens-tone="success"`);
+    expect(result.html).toContain(`data-lens-flash="success"`);
+    expect(result.html).toContain("▲ 0.250%");
+    expect(result.html).toContain("data-lens-candle-chart");
+    expect(result.html).toContain(`data-chart-kind="candle"`);
+    expect(result.html).toContain("BTC 3H / 5M");
+    expect(result.html).toContain("hsl(var(--success))");
+    expect(result.html).toContain("hsl(var(--destructive))");
+  });
+
   it("covers alternate branches for semantic renderers", () => {
     const result = new LensHTMLRenderer().render(`0F|st=paper
 0V|Branch Lab|Renderer variants|align=right|justify=start|width=sm

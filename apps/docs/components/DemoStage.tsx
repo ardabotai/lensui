@@ -17,7 +17,7 @@ type DemoKey = "live" | "animated" | "brief" | "gallery" | "timeline";
 const samples: Record<DemoKey, DemoSample> = {
   live: {
     label: "live data",
-    description: "Coinbase public market data updates BTC, ETH, and SOL fields in place after the first render.",
+    description: "Coinbase market data updates price direction, 3-hour candles, BTC trend, and a recent tick tape after the first render.",
     lightcode: liveDemoLightcode,
     afterRenderScript: liveDemoScript
   },

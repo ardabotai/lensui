@@ -294,13 +294,20 @@ export class LensHTMLRenderer {
   }
 
   private renderMetric(node: LensNode): string {
-    const tone = toneTextClass(node.props.tone);
-    return `<div class="lens-panel rounded-lg border p-4" ${this.attrs(node, "metric")}><div class="font-mono text-[11px] font-semibold uppercase text-muted-foreground">${boundText(this.sources, arg(node, 0), "")}</div><div class="mt-1 lens-display text-2xl font-semibold sm:text-3xl ${tone}" ${bindAttr(arg(node, 1), "text")}>${boundText(this.sources, arg(node, 1), "—")}</div>${arg(node, 2) ? `<div class="mt-1 text-xs text-muted-foreground">${boundText(this.sources, arg(node, 2))}</div>` : ""}</div>`;
+    const toneValue = resolveBinding(node.props.tone, this.sources, node.props.tone ?? "");
+    const flashValue = resolveBinding(node.props.flash, this.sources, node.props.flash ?? "");
+    const tone = toneTextClass(toneValue);
+    const panel = metricPanelClass(toneValue);
+    const flashTone = metricFlashTone(flashValue || toneValue);
+    return `<div class="lens-panel rounded-lg border p-4 ${panel}" data-lens-tone="${esc(toneValue || "neutral")}" ${flashTone ? `data-lens-flash="${esc(flashTone)}"` : ""} ${this.attrs(node, "metric")}><div class="font-mono text-[11px] font-semibold uppercase text-muted-foreground">${boundText(this.sources, arg(node, 0), "")}</div><div class="mt-1 lens-display text-2xl font-semibold sm:text-3xl ${tone}" ${bindAttr(arg(node, 1), "text")}>${boundText(this.sources, arg(node, 1), "—")}</div>${arg(node, 2) ? `<div class="mt-1 text-xs text-muted-foreground">${boundText(this.sources, arg(node, 2))}</div>` : ""}</div>`;
   }
 
   private renderChart(node: LensNode): string {
     const kind = (arg(node, 0) ?? node.props.kind ?? "line").toLowerCase();
     const dataValue = arg(node, 1) ?? node.props.data ?? "";
+    if (["candle", "candles", "candlestick", "ohlc"].includes(kind)) {
+      return this.renderCandleChart(node, dataValue);
+    }
     const data = chartData(resolveBinding(dataValue, this.sources, dataValue));
     const height = numberProp(node, "height", numberProp(node, "h", 220));
     const max = Math.max(1, ...data);
@@ -308,7 +315,43 @@ export class LensHTMLRenderer {
     const bars = scaled.map((value, index) => `<rect x="${34 + index * (560 / Math.max(1, scaled.length))}" y="${204 - value}" width="${Math.max(8, 440 / Math.max(1, scaled.length))}" height="${value}" rx="2" fill="hsl(var(--foreground))" opacity="${0.42 + (index / Math.max(1, scaled.length)) * 0.45}"/>`).join("");
     const points = scaled.map((value, index) => `${34 + index * (560 / Math.max(1, scaled.length - 1))},${204 - value}`).join(" ");
     const mark = kind === "bar" ? bars : `<polyline points="${points}" fill="none" stroke="hsl(var(--foreground))" stroke-width="3" stroke-linecap="square" stroke-linejoin="miter"/>`;
-    return `<svg class="w-full rounded-lg border bg-secondary/20" style="${adaptiveHeightStyle(height, 0.32, 120)}" viewBox="0 0 640 240" preserveAspectRatio="none" aria-label="chart" data-lens-role="chartData" ${bindAttr(dataValue, "chartData")} ${this.attrs(node, "chart")}><path d="M32 36V204H612" fill="none" stroke="hsl(var(--border))" stroke-width="1"/>${mark}</svg>`;
+    return `<svg class="w-full rounded-lg border bg-secondary/20" style="${adaptiveHeightStyle(height, 0.32, 120)}" viewBox="0 0 640 240" preserveAspectRatio="none" aria-label="chart" data-lens-role="chartData" data-chart-kind="${esc(kind)}" ${bindAttr(dataValue, "chartData")} ${this.attrs(node, "chart")}><path d="M32 36V204H612" fill="none" stroke="hsl(var(--border))" stroke-width="1"/>${mark}</svg>`;
+  }
+
+  private renderCandleChart(node: LensNode, dataValue: string): string {
+    const candles = candleData(resolveBinding(dataValue, this.sources, dataValue)).slice(-48);
+    const label = arg(node, 2) ?? node.props.label ?? arg(node, 1) ?? "Candles";
+    const height = numberProp(node, "height", numberProp(node, "h", 220));
+    if (!candles.length) {
+      return `<figure class="lens-panel overflow-hidden rounded-lg border bg-secondary/20" data-lens-candle-chart ${this.attrs(node, "chart")}><figcaption class="flex items-center justify-between border-b border-border/70 px-3 py-2 font-mono text-[11px] uppercase text-muted-foreground"><span>${boundText(this.sources, label)}</span><span>waiting</span></figcaption><svg class="block w-full" style="${adaptiveHeightStyle(height, 0.32, 120)}" viewBox="0 0 640 240" preserveAspectRatio="none" aria-label="candlestick chart" data-lens-role="chartData" data-chart-kind="candle" ${bindAttr(dataValue, "chartData")}><path d="M32 36V204H612" fill="none" stroke="hsl(var(--border))" stroke-width="1"/><text x="320" y="126" text-anchor="middle" fill="hsl(var(--muted-foreground))" font-family="var(--lens-font-mono)" font-size="13">waiting for candles</text></svg></figure>`;
+    }
+    const lows = candles.map((candle) => candle.low);
+    const highs = candles.map((candle) => candle.high);
+    const min = Math.min(...lows);
+    const max = Math.max(...highs);
+    const range = Math.max(0.000001, max - min);
+    const left = 34;
+    const top = 32;
+    const chartWidth = 574;
+    const chartHeight = 172;
+    const step = chartWidth / Math.max(1, candles.length);
+    const bodyWidth = Math.max(3, Math.min(12, step * 0.54));
+    const y = (value: number) => top + ((max - value) / range) * chartHeight;
+    const marks = candles.map((candle, index) => {
+      const x = left + index * step + step / 2;
+      const open = y(candle.open);
+      const close = y(candle.close);
+      const high = y(candle.high);
+      const low = y(candle.low);
+      const up = candle.close >= candle.open;
+      const color = up ? "hsl(var(--success))" : "hsl(var(--destructive))";
+      const bodyY = Math.min(open, close);
+      const bodyHeight = Math.max(3, Math.abs(close - open));
+      return `<g opacity="${0.56 + (index / Math.max(1, candles.length - 1)) * 0.42}"><line x1="${roundSVG(x)}" y1="${roundSVG(high)}" x2="${roundSVG(x)}" y2="${roundSVG(low)}" stroke="${color}" stroke-width="1.6"/><rect x="${roundSVG(x - bodyWidth / 2)}" y="${roundSVG(bodyY)}" width="${roundSVG(bodyWidth)}" height="${roundSVG(bodyHeight)}" rx="1.5" fill="${color}"/></g>`;
+    }).join("");
+    const last = candles[candles.length - 1];
+    const lastTone = last.close >= last.open ? "up" : "down";
+    return `<figure class="lens-panel overflow-hidden rounded-lg border bg-secondary/20" data-lens-candle-chart ${this.attrs(node, "chart")}><figcaption class="flex items-center justify-between border-b border-border/70 px-3 py-2 font-mono text-[11px] uppercase text-muted-foreground"><span>${boundText(this.sources, label)}</span><span class="${lastTone === "up" ? "text-success" : "text-destructive"}">${lastTone}</span></figcaption><svg class="block w-full" style="${adaptiveHeightStyle(height, 0.32, 120)}" viewBox="0 0 640 240" preserveAspectRatio="none" aria-label="candlestick chart" data-lens-role="chartData" data-chart-kind="candle" ${bindAttr(dataValue, "chartData")}><g opacity=".55"><path d="M32 36V204H612" fill="none" stroke="hsl(var(--border))" stroke-width="1"/><path d="M32 82H612M32 128H612M32 174H612" fill="none" stroke="hsl(var(--border))" stroke-width="1" opacity=".45"/></g>${marks}</svg></figure>`;
   }
 
   private renderScene(node: LensNode): string {
@@ -669,6 +712,7 @@ export function createStageRuntime(root: HTMLElement): LensStageRuntime {
 
 function mountRuntime(root: HTMLElement): void {
   applyNodeStyles(root);
+  mountMetricFlashes(root);
   fitStage(root);
   observeRenderedContentResize(root);
   mountDecks(root);
@@ -681,6 +725,30 @@ function applyNodeStyles(root: HTMLElement): void {
     const css = element.dataset.lensStyleCss;
     if (!css) return;
     element.style.cssText = `${element.style.cssText};${css}`;
+  });
+}
+
+function mountMetricFlashes(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>("[data-lens-flash]").forEach((element) => {
+    const tone = metricFlashTone(element.dataset.lensFlash);
+    if (!tone || typeof element.animate !== "function") return;
+    const color = tone === "success" ? "hsl(var(--success))" : "hsl(var(--destructive))";
+    const tint = tone === "success" ? "hsl(var(--success) / 0.18)" : "hsl(var(--destructive) / 0.18)";
+    const glow = tone === "success" ? "hsl(var(--success) / 0.3)" : "hsl(var(--destructive) / 0.3)";
+    element.animate([
+      {
+        backgroundColor: tint,
+        borderColor: color,
+        boxShadow: `0 0 0 1px ${color}, 0 0 34px ${glow}`,
+        transform: "translateY(-1px)"
+      },
+      {
+        backgroundColor: "transparent",
+        borderColor: "hsl(var(--border) / 0.5)",
+        boxShadow: "var(--lens-shadow)",
+        transform: "translateY(0)"
+      }
+    ], { duration: 780, easing: "cubic-bezier(.16,1,.3,1)" });
   });
 }
 
@@ -1184,6 +1252,15 @@ function toneClass(value?: string): string {
   }
 }
 
+function metricPanelClass(value?: string): string {
+  switch ((value ?? "").toLowerCase()) {
+    case "success": case "up": return "border-success/45 bg-success/5";
+    case "destructive": case "down": return "border-destructive/45 bg-destructive/5";
+    case "warning": case "flat": return "border-warning/35 bg-warning/5";
+    default: return "";
+  }
+}
+
 function tonePanelClass(value?: string): string {
   switch ((value ?? "").toLowerCase()) {
     case "success": case "done": case "ok": return "border-success/50 bg-success/10 text-foreground";
@@ -1203,11 +1280,20 @@ function toneBorderClass(value?: string): string {
 }
 
 function toneTextClass(value?: string): string {
-  switch (value) {
-    case "success": return "text-success";
-    case "warning": return "text-warning";
-    case "muted": return "text-muted-foreground";
+  switch ((value ?? "").toLowerCase()) {
+    case "success": case "up": return "text-success";
+    case "destructive": case "down": return "text-destructive";
+    case "warning": case "flat": return "text-warning";
+    case "muted": case "neutral": return "text-muted-foreground";
     default: return "text-foreground";
+  }
+}
+
+function metricFlashTone(value?: string): "success" | "destructive" | "" {
+  switch ((value ?? "").toLowerCase()) {
+    case "success": case "up": return "success";
+    case "destructive": case "down": return "destructive";
+    default: return "";
   }
 }
 
@@ -1218,6 +1304,58 @@ function truthy(value?: string): boolean {
 function chartData(raw: string): number[] {
   const values = raw.split(/[,\s]+/).map((value) => Number(value)).filter(Number.isFinite);
   return values.length ? values : [10, 20, 16, 28, 34, 26, 42];
+}
+
+type CandleDatum = {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+};
+
+function candleData(raw: string): CandleDatum[] {
+  if (!raw) return [];
+  try {
+    const json = JSON.parse(raw);
+    if (Array.isArray(json)) {
+      return json.map((item) => {
+        if (Array.isArray(item)) {
+          if (item.length >= 6) {
+            return candleDatum(item[0], item[3], item[2], item[1], item[4]);
+          }
+          return candleDatum(item[0], item[1], item[2], item[3], item[4]);
+        }
+        if (item && typeof item === "object") {
+          const row = item as Record<string, unknown>;
+          return candleDatum(row.time ?? row.t, row.open ?? row.o, row.high ?? row.h, row.low ?? row.l, row.close ?? row.c);
+        }
+        return undefined;
+      }).filter((item): item is CandleDatum => Boolean(item));
+    }
+  } catch {}
+  return compactRows(raw)
+    .map((row) => candleDatum(row[0], row[1], row[2], row[3], row[4]))
+    .filter((item): item is CandleDatum => Boolean(item));
+}
+
+function candleDatum(time: unknown, open: unknown, high: unknown, low: unknown, close: unknown): CandleDatum | undefined {
+  const o = Number(open);
+  const h = Number(high);
+  const l = Number(low);
+  const c = Number(close);
+  if (![o, h, l, c].every(Number.isFinite)) return undefined;
+  return {
+    time: String(time ?? ""),
+    open: o,
+    high: Math.max(h, o, c),
+    low: Math.min(l, o, c),
+    close: c
+  };
+}
+
+function roundSVG(value: number): string {
+  return Number.isFinite(value) ? value.toFixed(2).replace(/\.?0+$/, "") : "0";
 }
 
 function compactRow(row: string | string[] | undefined): string[] {

@@ -108,7 +108,6 @@ export const liveMarketLightcode = `0DS|market|wss://ws-feed.exchange.coinbase.c
 2H|candle|$market.btcCandles|BTC 3H / 5M|h=210
 2H|candle|$market.ethCandles|ETH 3H / 5M|h=210
 1G|auto|min=280|max=2|mh=260
-2H|line|$market.trend|BTC tick stream|h=190
 2TL|Recent tape|$market.clock|items=$market.ticks
 1ST|Feed health|$market.status|items=$market.steps`;
 
@@ -119,7 +118,6 @@ export const heroMarketLightcode = `0DS|market|wss://ws-feed.exchange.coinbase.c
 1G|auto|min=190|max=2|mh=110
 2M|BTC/USD|$market.btc|$market.btcMove|tone=$market.btcTone|flash=$market.btcFlash|s=hot
 2M|ETH/USD|$market.eth|$market.ethMove|tone=$market.ethTone|flash=$market.ethFlash|s=hot
-1H|line|$market.trend|BTC tick stream|h=120|hide=narrow
 1ST|Feed|$market.status|items=$market.steps|hide=narrow,portrait`;
 
 export const liveMarketScript = `

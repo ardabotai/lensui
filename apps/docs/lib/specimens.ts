@@ -131,6 +131,7 @@ export const liveMarketScript = `
     const products = ["BTC-USD", "ETH-USD"];
     const priceState = new Map();
     const moveState = new Map();
+    const directionState = new Map();
     const candleState = new Map();
     const recentTicks = [];
     const btcSeries = [34, 36, 35, 39, 38, 42, 41, 44];
@@ -160,15 +161,23 @@ export const liveMarketScript = `
       return new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     }
 
-    function pctMove(current, previous) {
+    function pctMove(current, previous, direction) {
       if (!Number.isFinite(current) || !Number.isFinite(previous) || previous <= 0) return "live";
       const delta = ((current - previous) / previous) * 100;
-      if (Math.abs(delta) < 0.001) return "flat";
-      return (delta > 0 ? "▲ " : "▼ ") + Math.abs(delta).toFixed(3) + "%";
+      return (direction > 0 ? "▲ " : "▼ ") + Math.abs(delta).toFixed(3) + "%";
     }
 
     function stateFor(product) {
-      return moveState.get(product) || { label: "waiting", tone: "muted" };
+      return moveState.get(product) || { label: "▲ waiting", tone: "success" };
+    }
+
+    function tickDirection(product, price, previous) {
+      if (Number.isFinite(previous)) {
+        const delta = price - previous;
+        if (delta > 0) return 1;
+        if (delta < 0) return -1;
+      }
+      return directionState.get(product) || 1;
     }
 
     function candleNumber(value) {
@@ -215,23 +224,24 @@ export const liveMarketScript = `
       const price = Number(value);
       if (!products.includes(product) || !Number.isFinite(price)) return false;
       const previous = Number(priceState.get(product));
-      const direction = Number.isFinite(previous) ? Math.sign(price - previous) : 0;
-      const tone = direction > 0 ? "success" : direction < 0 ? "destructive" : "muted";
-      const label = Number.isFinite(previous) ? pctMove(price, previous) : source === "history" ? "3H candle" : "live";
+      const direction = tickDirection(product, price, previous);
+      const tone = direction > 0 ? "success" : "destructive";
+      const label = Number.isFinite(previous)
+        ? pctMove(price, previous, direction)
+        : (direction > 0 ? "▲ " : "▼ ") + (source === "history" ? "3H candle" : "live");
       priceState.set(product, price);
       moveState.set(product, { label, tone });
+      directionState.set(product, direction);
       updateLiveCandle(product, price);
       tickCount += 1;
-      if (direction !== 0) {
-        lastFlashProduct = product;
-        lastFlashTone = tone;
-      }
+      lastFlashProduct = product;
+      lastFlashTone = tone;
       recentTicks.unshift({
         product: productLabel(product),
         price: formatPrice(price),
         source,
         time: tickTime(),
-        tone: tone === "muted" ? "warning" : tone
+        tone
       });
       while (recentTicks.length > 6) recentTicks.pop();
       return true;

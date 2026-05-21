@@ -575,6 +575,7 @@ R
     await expect(heroFrame.locator("#lens-stage-root")).toBeVisible();
     await expect(heroFrame.getByText("Crypto Live Tape")).toBeVisible();
     await expect(heroFrame.getByText("SOL/USD")).toHaveCount(0);
+    await expect(heroFrame.getByText("flat")).toHaveCount(0);
 
     const bridgeServer = startLensBridge({ port: 0 });
     await once(bridgeServer, "listening");
@@ -592,6 +593,7 @@ R
       await expect(demoFrame.getByText("Connect your agent to stream UI")).toBeVisible();
       await expect(demoFrame.getByText("Crypto Live Tape")).toHaveCount(0);
       await expect(demoFrame.getByText("SOL/USD")).toHaveCount(0);
+      await expect(demoFrame.getByText("flat")).toHaveCount(0);
       await expect(demoFrame.locator("[data-lens-scene]")).toHaveCount(0);
       await expect(demoFrame.locator("[data-lens-candle-chart]")).toHaveCount(0);
       const playgroundLayout = await page.evaluate(() => {

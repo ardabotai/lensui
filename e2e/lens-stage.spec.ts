@@ -576,6 +576,18 @@ R
     await expect(heroFrame.getByText("Crypto Live Tape")).toBeVisible();
     await expect(heroFrame.getByText("SOL/USD")).toHaveCount(0);
     await expect(heroFrame.getByText("flat")).toHaveCount(0);
+    const feedMetric = heroFrame.locator('[data-lens-component="metric"]').filter({ hasText: "Feed" });
+    await expect(feedMetric).toHaveAttribute("data-lens-tone", "neutral");
+    const feedLayout = await feedMetric.evaluate((element) => {
+      const frame = element.closest<HTMLElement>("#lens-stage-frame");
+      return {
+        inGrid: Boolean(element.parentElement?.hasAttribute("data-lens-adaptive-grid")),
+        feedWidth: element.getBoundingClientRect().width,
+        frameWidth: frame?.getBoundingClientRect().width ?? 0
+      };
+    });
+    expect(feedLayout.inGrid).toBe(false);
+    expect(feedLayout.feedWidth).toBeGreaterThanOrEqual(feedLayout.frameWidth - 2);
 
     const bridgeServer = startLensBridge({ port: 0 });
     await once(bridgeServer, "listening");

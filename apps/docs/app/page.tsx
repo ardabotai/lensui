@@ -51,7 +51,7 @@ export default function HomePage() {
               <a className="button source" href={githubURL} rel="noreferrer" target="_blank"><GitHubIcon /> GitHub</a>
             </div>
             <div className="hero-metrics" aria-label="LensUI live generation highlights">
-              <div><strong>0kb</strong><span>new client bundle per render</span></div>
+              <div><strong>no rebuild</strong><span>runtime patches the mounted page</span></div>
               <div><strong>{benchmarkSummary.averageReactSavings}%</strong><span>average token savings vs React</span></div>
               <div><strong>save</strong><span>generated components for later use</span></div>
             </div>

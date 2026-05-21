@@ -562,6 +562,8 @@ R
     await mockCoinbaseMarketRoutes(page);
     await page.goto(siteOrigin);
     await expect(page.getByRole("heading", { name: "Next-gen UI isn't using AI to generate code to ship to everybody. It's AI streaming UI to each user live.", exact: true })).toBeVisible();
+    await expect(page.getByText("runtime patches the mounted page", { exact: true })).toBeVisible();
+    await expect(page.getByText("new client bundle per render", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Why", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Live surface", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Agent bridge", exact: true })).toHaveCount(0);

@@ -19,12 +19,14 @@ function frameHeight(size: SizeMessage["size"], fallback: number): number {
 
 export function LensUIFrame({
   afterRenderScript = "",
+  autoResize = true,
   lightcode,
   title,
   height,
   className = ""
 }: Readonly<{
   afterRenderScript?: string;
+  autoResize?: boolean;
   lightcode: string;
   title: string;
   height?: number;
@@ -41,12 +43,14 @@ export function LensUIFrame({
     function handleMessage(event: MessageEvent<SizeMessage>) {
       if (event.source !== iframeRef.current?.contentWindow) return;
       if (event.data?.type !== "lensui:size") return;
-      setAutoHeight(frameHeight(event.data.size, height ?? 260));
+      if (autoResize) {
+        setAutoHeight(frameHeight(event.data.size, height ?? 260));
+      }
     }
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [height]);
+  }, [autoResize, height]);
 
   return (
     <iframe

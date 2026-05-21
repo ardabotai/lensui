@@ -6,7 +6,7 @@ import { InteractiveLensUIDemo } from "../components/InteractiveLensUIDemo";
 import { LensUIFrame } from "../components/LensUIFrame";
 import { benchmarkResults, benchmarkSummary } from "../lib/benchmarks";
 import { githubURL, npmURL } from "../lib/links";
-import { heroMarketLightcode, liveMarketLightcode, liveMarketScript } from "../lib/specimens";
+import { heroMarketLightcode, liveMarketScript } from "../lib/specimens";
 
 const proofCase = benchmarkResults[0];
 
@@ -75,6 +75,7 @@ export default function HomePage() {
             <div className="hero-stage-card">
               <LensUIFrame
                 afterRenderScript={liveMarketScript}
+                autoResize={false}
                 className="hero-frame"
                 height={390}
                 lightcode={heroMarketLightcode}
@@ -193,7 +194,7 @@ export default function HomePage() {
           <div className="runtime-intro">
             <h2>Try the running surface.</h2>
             <p>
-              Watch the runtime render stable UI lightcode on the left while live source updates and agent renders append on the right. Starter examples show the grammar; the bridge lets your own agent generate the real interface.
+              Copy the generated instructions into your local agent, then watch it stream lightcode into a blank browser target without a rebuild loop.
             </p>
           </div>
           <DemoStage />

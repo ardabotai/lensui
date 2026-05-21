@@ -509,36 +509,28 @@ R
     expect(health.errors).toEqual([]);
   });
 
-  test("supports editable one-page demo renders with failure rollback", async ({ page }) => {
+  test("renders the blank agent target with copyable bridge instructions", async ({ page }) => {
     test.setTimeout(90_000);
     const health = collectPageHealth(page);
 
-    await mockCoinbaseMarketRoutes(page);
     await page.goto(siteOrigin);
     await expect(page.getByRole("heading", { name: "Try the running surface.", exact: true })).toBeVisible();
 
     const demo = page.locator(".demo-stage .lens-playground").first();
     const demoFrame = page.frameLocator('iframe[title="LensUI demo render"]');
     await expect(demoFrame.locator("#lens-stage-root")).toBeVisible();
-    await expect(demoFrame.getByText("Crypto Live Tape")).toBeVisible();
+    await expect(demoFrame.getByText("Connect your agent to stream UI")).toBeVisible();
+    await expect(demo.getByRole("tab", { name: "Lightcode" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "brief" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "gallery" })).toHaveCount(0);
 
-    await page.getByRole("button", { name: "brief" }).click();
-    await expect(demoFrame.getByText("Live Brief")).toBeVisible();
-    await demo.getByRole("tab", { name: "Lightcode" }).click();
-    const editor = demo.getByLabel("LensUI demo render editable lightcode");
-    await expect(editor).toBeVisible();
-    await editor.fill(`0F|st=mono
- 1M|Broken|bad indent`);
-    await demo.getByRole("button", { name: "Render" }).click();
-    await expect(demo.getByText("Render failed").first()).toBeVisible();
-    await expect(demoFrame.getByText("Live Brief")).toBeVisible();
-
-    await demo.getByRole("tab", { name: "Lightcode" }).click();
-    await editor.fill(`0F|st=mono
-0V|Edited Surface|Manual lightcode edit
-1M|State|ok`);
-    await demo.getByRole("button", { name: "Render" }).click();
-    await expect(demoFrame.getByText("Edited Surface")).toBeVisible();
+    const copyButton = page.getByRole("button", { name: "Copy agent instructions" });
+    await expect(copyButton).toBeVisible();
+    await expect(copyButton).toBeEnabled();
+    const instructions = await page.getByLabel("LensUI agent instructions").inputValue();
+    expect(instructions).toContain("npx -y --package @ardabot/lensui@latest lensui skill");
+    expect(instructions).toContain("npx -y --package @ardabot/lensui@latest lensui bridge");
+    expect(instructions).toContain("/render");
     await expect(demoFrame.locator("[data-lens-render-failure]")).toHaveCount(0);
 
     expect(health.errors).toEqual([]);
@@ -563,6 +555,7 @@ R
     const heroFrame = page.frameLocator('iframe[title="LensUI live runtime preview"]');
     await expect(heroFrame.locator("#lens-stage-root")).toBeVisible();
     await expect(heroFrame.getByText("Crypto Live Tape")).toBeVisible();
+    await expect(heroFrame.getByText("SOL/USD")).toHaveCount(0);
 
     const bridgeServer = startLensBridge({ port: 0 });
     await once(bridgeServer, "listening");
@@ -577,45 +570,34 @@ R
       await expect(demoFrame.locator("#lens-stage-root")).toBeVisible();
       await expect(demoFrame.locator("#lens-stage-root")).toHaveAttribute("data-lens-sizing", "auto");
       await expect(demoFrame.locator("#lens-stage-root")).toHaveAttribute("data-lens-flow", "auto");
-      await expect(demoFrame.getByText("Crypto Live Tape")).toBeVisible();
+      await expect(demoFrame.getByText("Connect your agent to stream UI")).toBeVisible();
+      await expect(demoFrame.getByText("Crypto Live Tape")).toHaveCount(0);
+      await expect(demoFrame.getByText("SOL/USD")).toHaveCount(0);
       await expect(demoFrame.locator("[data-lens-scene]")).toHaveCount(0);
-      await expect(demoFrame.locator("[data-lens-candle-chart]")).toHaveCount(3);
-      await expect(demoFrame.getByText("Recent tape")).toBeVisible();
-      await expect(demoFrame.getByText("Feed health")).toBeVisible();
-      await page.waitForFunction(() => {
-        const iframe = document.querySelector<HTMLIFrameElement>('iframe[title="LensUI demo render"]');
-        return Boolean(iframe && iframe.getBoundingClientRect().height > 560);
-      });
+      await expect(demoFrame.locator("[data-lens-candle-chart]")).toHaveCount(0);
       const playgroundLayout = await page.evaluate(() => {
         const iframe = document.querySelector<HTMLIFrameElement>('iframe[title="LensUI demo render"]');
-        const footer = document.querySelector<HTMLElement>(".demo-stage .lens-playground-footer");
+        const bridge = document.querySelector<HTMLElement>(".agent-bridge");
         const iframeRect = iframe?.getBoundingClientRect();
-        const footerRect = footer?.getBoundingClientRect();
+        const bridgeRect = bridge?.getBoundingClientRect();
         return {
           iframeHeight: iframeRect?.height ?? 0,
           iframeBottom: iframeRect?.bottom ?? 0,
-          footerTop: footerRect?.top ?? 0
+          bridgeTop: bridgeRect?.top ?? 0
         };
       });
-      expect(playgroundLayout.iframeHeight).toBeGreaterThan(560);
-      expect(playgroundLayout.footerTop).toBeGreaterThanOrEqual(playgroundLayout.iframeBottom - 1);
-      await expect(page.locator(".demo-stage .lens-live-stream")).toBeVisible();
-      await expect(page.locator(".demo-stage .lens-live-stream").getByText("initial lightcode")).toBeVisible();
-      await expect(page.locator(".demo-stage .lens-live-stream").getByText("source update: market")).toBeVisible();
-      await expect(page.locator(".demo-stage .lens-live-stream").getByText("S|market|application/json")).toBeVisible();
+      expect(playgroundLayout.iframeHeight).toBe(560);
+      expect(playgroundLayout.bridgeTop).toBeGreaterThanOrEqual(playgroundLayout.iframeBottom - 1);
+      await expect(page.locator(".demo-stage .lens-live-stream")).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Connect bridge" })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Copy bridge command" })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Copy hello render" })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Copy agent instructions" })).toBeVisible();
-      await expect(demoFrame.locator('[data-lens-component="metric"]').filter({ hasText: "BTC/USD" })).toBeVisible();
-      await expect(demoFrame.getByText("BTC 3H / 5M")).toBeVisible();
-      const firstLiveText = await demoFrame.locator("body").innerText();
-      await expect.poll(async () => page.frameLocator('iframe[title="LensUI demo render"]').locator("body").innerText(), { timeout: 8000 }).not.toBe(firstLiveText);
-      const secondLiveText = await demoFrame.locator("body").innerText();
-      expect(secondLiveText).not.toBe(firstLiveText);
-      await expect.poll(async () => page.frameLocator('iframe[title="LensUI demo render"]').locator("body").innerText(), { timeout: 8000 }).not.toBe(secondLiveText);
-      const thirdLiveText = await demoFrame.locator("body").innerText();
-      expect(thirdLiveText).not.toBe(secondLiveText);
+      const instructions = await page.getByLabel("LensUI agent instructions").inputValue();
+      expect(instructions).toContain("You are controlling a live LensUI container");
+      expect(instructions).toContain(bridgeOrigin);
+      await expect(page.getByRole("button", { name: "live data" })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "animated art" })).toHaveCount(0);
       await iframeScreenshot(page);
 
       await expect(page.locator(".bridge-pill.connected")).toBeVisible();
@@ -633,17 +615,8 @@ R
       });
       expect(helloResponse.status).toBe(200);
       await expect(demoFrame.getByText("Hello from your agent")).toBeVisible();
-      await expect(page.locator(".demo-stage .lens-live-stream").getByText("bridge render")).toBeVisible();
-      await expect(page.locator(".demo-stage .lens-live-stream").getByText("Hello from your agent")).toBeVisible();
-
-      await page.getByRole("button", { name: "gallery" }).click();
-      demoFrame = page.frameLocator('iframe[title="LensUI demo render"]');
-      await expect(demoFrame.getByText("Media Mosaic")).toBeVisible();
-
-      await page.getByRole("button", { name: "animated art" }).click();
-      demoFrame = page.frameLocator('iframe[title="LensUI demo render"]');
-      await expect(demoFrame.getByText("Generative Surface")).toBeVisible();
-      await expect(demoFrame.locator("[data-vector-kind]")).toHaveAttribute("data-vector-kind", "flow");
+      await expect(page.locator(".agent-bridge.streaming")).toBeVisible();
+      await expect(page.getByLabel("LensUI agent instructions")).toHaveCount(0);
     } finally {
       await closeServerNow(bridgeServer);
     }
@@ -695,13 +668,11 @@ async function mockCoinbaseMarketRoutes(page: Page): Promise<void> {
   let tick = 0;
   const bases: Record<string, number> = {
     "BTC-USD": 104250,
-    "ETH-USD": 3820,
-    "SOL-USD": 188
+    "ETH-USD": 3820
   };
   const drift: Record<string, number> = {
     "BTC-USD": 11,
-    "ETH-USD": -1.4,
-    "SOL-USD": 0.18
+    "ETH-USD": -1.4
   };
 
   await page.route("https://api.coinbase.com/v2/prices/**/spot", async (route) => {
@@ -715,7 +686,7 @@ async function mockCoinbaseMarketRoutes(page: Page): Promise<void> {
         data: {
           base: product.split("-")[0],
           currency: "USD",
-          amount: amount.toFixed(product === "SOL-USD" ? 3 : 2)
+          amount: amount.toFixed(2)
         }
       })
     });

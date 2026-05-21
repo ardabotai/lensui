@@ -115,12 +115,13 @@ describe("@lensui/html", () => {
   it("honors documented adaptive grids and unresolved live repeaters", () => {
     const result = new LensHTMLRenderer().render(`0DS|news|https://example.com/feed.json
 0V|Contracts
-1G|auto|min=180|max=3
+1G|auto|min=180|max=3|mh=128
 2M|A|1
 1NL|Latest||$news.items`);
 
     expect(result.html).toContain("data-lens-adaptive-grid");
     expect(result.html).toContain(`data-min-cell-width="180"`);
+    expect(result.html).toContain(`data-min-cell-height="128"`);
     expect(result.html).toContain("No stories yet");
     expect(result.html).not.toContain("$news.items");
   });
@@ -239,6 +240,8 @@ describe("@lensui/html", () => {
 
     expect(result.html).toContain(`data-lens-tone="success"`);
     expect(result.html).toContain(`data-lens-flash="success"`);
+    expect(result.html).toContain("min-h-[112px]");
+    expect(result.html).toContain("tabular-nums");
     expect(result.html).toContain("▲ 0.250%");
     expect(result.html).toContain("data-lens-candle-chart");
     expect(result.html).toContain(`data-chart-kind="candle"`);

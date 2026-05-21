@@ -101,14 +101,12 @@ export const liveMarketLightcode = `0DS|market|wss://ws-feed.exchange.coinbase.c
 0F|st=studio
 0Y|hot|bg=card|bd=fg/24|p=4|r=2
 0V|Crypto Live Tape|Coinbase public ticker
-1G|auto|min=170|max=3|mh=128
+1G|auto|min=210|max=2|mh=128
 2M|BTC/USD|$market.btc|$market.btcMove|tone=$market.btcTone|flash=$market.btcFlash|s=hot
 2M|ETH/USD|$market.eth|$market.ethMove|tone=$market.ethTone|flash=$market.ethFlash|s=hot
-2M|SOL/USD|$market.sol|$market.solMove|tone=$market.solTone|flash=$market.solFlash|s=hot
-1G|auto|min=260|max=3|mh=245
+1G|auto|min=320|max=2|mh=245
 2H|candle|$market.btcCandles|BTC 3H / 5M|h=210
 2H|candle|$market.ethCandles|ETH 3H / 5M|h=210
-2H|candle|$market.solCandles|SOL 3H / 5M|h=210
 1G|auto|min=280|max=2|mh=260
 2H|line|$market.trend|BTC tick stream|h=190
 2TL|Recent tape|$market.clock|items=$market.ticks
@@ -118,10 +116,9 @@ export const heroMarketLightcode = `0DS|market|wss://ws-feed.exchange.coinbase.c
 0F|st=studio|d=compact
 0Y|hot|bg=card|bd=fg/24|p=4|r=2
 0V|Crypto Live Tape|Coinbase public ticker
-1G|auto|min=150|max=3|mh=110
+1G|auto|min=190|max=2|mh=110
 2M|BTC/USD|$market.btc|$market.btcMove|tone=$market.btcTone|flash=$market.btcFlash|s=hot
 2M|ETH/USD|$market.eth|$market.ethMove|tone=$market.ethTone|flash=$market.ethFlash|s=hot
-2M|SOL/USD|$market.sol|$market.solMove|tone=$market.solTone|flash=$market.solFlash|s=hot
 1H|line|$market.trend|BTC tick stream|h=120|hide=narrow
 1ST|Feed|$market.status|items=$market.steps|hide=narrow,portrait`;
 
@@ -133,7 +130,7 @@ export const liveMarketScript = `
     if (window.__lensMarketFallbackInterval) clearInterval(window.__lensMarketFallbackInterval);
     if (window.__lensMarketCandleInterval) clearInterval(window.__lensMarketCandleInterval);
 
-    const products = ["BTC-USD", "ETH-USD", "SOL-USD"];
+    const products = ["BTC-USD", "ETH-USD"];
     const priceState = new Map();
     const moveState = new Map();
     const candleState = new Map();
@@ -252,19 +249,14 @@ export const liveMarketScript = `
       window.lensStage.setSource("market", {
         btc: formatPrice(priceState.get("BTC-USD")),
         eth: formatPrice(priceState.get("ETH-USD")),
-        sol: formatPrice(priceState.get("SOL-USD")),
         btcMove: stateFor("BTC-USD").label,
         ethMove: stateFor("ETH-USD").label,
-        solMove: stateFor("SOL-USD").label,
         btcTone: stateFor("BTC-USD").tone,
         ethTone: stateFor("ETH-USD").tone,
-        solTone: stateFor("SOL-USD").tone,
         btcFlash: lastFlashProduct === "BTC-USD" ? lastFlashTone : "",
         ethFlash: lastFlashProduct === "ETH-USD" ? lastFlashTone : "",
-        solFlash: lastFlashProduct === "SOL-USD" ? lastFlashTone : "",
         btcCandles: candleString("BTC-USD"),
         ethCandles: candleString("ETH-USD"),
-        solCandles: candleString("SOL-USD"),
         trend: btcSeries.join(","),
         clock: recentTicks[0]?.time || "waiting",
         ticks: recentTicks.length
@@ -400,6 +392,6 @@ function stageFrameHTML(lightcode: string, afterRenderScript = ""): string {
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <script>window.tailwind={config:{theme:{extend:{colors:{border:"hsl(var(--border))",input:"hsl(var(--input))",ring:"hsl(var(--ring))",background:"hsl(var(--background))",foreground:"hsl(var(--foreground))",primary:{DEFAULT:"hsl(var(--primary))",foreground:"hsl(var(--primary-foreground))"},secondary:{DEFAULT:"hsl(var(--secondary))",foreground:"hsl(var(--secondary-foreground))"},destructive:{DEFAULT:"hsl(var(--destructive))",foreground:"hsl(var(--destructive-foreground))"},muted:{DEFAULT:"hsl(var(--muted))",foreground:"hsl(var(--muted-foreground))"},accent:{DEFAULT:"hsl(var(--accent))",foreground:"hsl(var(--accent-foreground))"},card:{DEFAULT:"hsl(var(--card))",foreground:"hsl(var(--card-foreground))"},success:"hsl(var(--success))",warning:"hsl(var(--warning))"},borderRadius:{lg:"var(--radius)",md:"calc(var(--radius) - 2px)",sm:"calc(var(--radius) - 4px)"}}}}};</script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>:root{color-scheme:light dark;--background:0 0% 3%;--foreground:0 0% 94%;--card:0 0% 7%;--card-foreground:0 0% 94%;--primary:0 0% 96%;--primary-foreground:0 0% 4%;--secondary:0 0% 11%;--secondary-foreground:0 0% 92%;--muted:0 0% 13%;--muted-foreground:0 0% 62%;--accent:0 0% 18%;--accent-foreground:0 0% 96%;--destructive:0 0% 88%;--destructive-foreground:0 0% 4%;--border:0 0% 24%;--input:0 0% 24%;--ring:0 0% 96%;--success:0 0% 82%;--warning:0 0% 68%;--surface-raised:0 0% 10%;--radius:.5rem;--lens-stage-padding:16px;--lens-grid-line:255 255 255 / .035;--lens-grid-line-soft:255 255 255 / .032;--lens-panel-sheen:255 255 255 / .035;--lens-stage-background:hsl(var(--background));--lens-panel-background:linear-gradient(180deg,rgb(var(--lens-panel-sheen)),transparent 42%),hsl(var(--card)/.92);--lens-panel-border:hsl(var(--border)/.82);--lens-shadow:0 18px 60px rgb(0 0 0 / .24);--lens-font-body:"Manrope",sans-serif;--lens-font-display:"Space Grotesk","Manrope",sans-serif;--lens-font-mono:"JetBrains Mono","SF Mono",ui-monospace,monospace}html,body,#lens-stage-mount{margin:0;width:100%;height:100%;overflow:hidden;background:hsl(var(--background));color:hsl(var(--foreground));font-family:var(--lens-font-body)}*{box-sizing:border-box;letter-spacing:0;min-width:0}.lens-stage-root{width:100%;height:100%;max-width:100%;max-height:100%;overflow:hidden;overscroll-behavior:contain;padding:var(--lens-stage-padding);background:linear-gradient(90deg,rgb(var(--lens-grid-line)) 1px,transparent 1px),linear-gradient(0deg,rgb(var(--lens-grid-line-soft)) 1px,transparent 1px),hsl(var(--background));background-size:32px 32px}.lens-stage-frame{transform-origin:top center}.lens-stage-frame p,.lens-stage-frame h1,.lens-stage-frame h2,.lens-stage-frame h3,.lens-stage-frame h4,.lens-stage-frame td,.lens-stage-frame th{overflow-wrap:anywhere}.lens-display{font-family:var(--lens-font-display)}.ui-mono{font-family:var(--lens-font-mono)}.lens-panel{background:var(--lens-panel-background);border-color:var(--lens-panel-border);box-shadow:var(--lens-shadow)}</style>
+    <style>:root{color-scheme:light dark;--background:0 0% 3%;--foreground:0 0% 94%;--card:0 0% 7%;--card-foreground:0 0% 94%;--primary:0 0% 96%;--primary-foreground:0 0% 4%;--secondary:0 0% 11%;--secondary-foreground:0 0% 92%;--muted:0 0% 13%;--muted-foreground:0 0% 62%;--accent:0 0% 18%;--accent-foreground:0 0% 96%;--destructive:0 84% 68%;--destructive-foreground:0 0% 4%;--border:0 0% 24%;--input:0 0% 24%;--ring:0 0% 96%;--success:150 78% 54%;--warning:42 90% 58%;--surface-raised:0 0% 10%;--radius:.5rem;--lens-stage-padding:16px;--lens-grid-line:255 255 255 / .035;--lens-grid-line-soft:255 255 255 / .032;--lens-panel-sheen:255 255 255 / .035;--lens-stage-background:hsl(var(--background));--lens-panel-background:linear-gradient(180deg,rgb(var(--lens-panel-sheen)),transparent 42%),hsl(var(--card)/.92);--lens-panel-border:hsl(var(--border)/.82);--lens-shadow:0 18px 60px rgb(0 0 0 / .24);--lens-font-body:"Manrope",sans-serif;--lens-font-display:"Space Grotesk","Manrope",sans-serif;--lens-font-mono:"JetBrains Mono","SF Mono",ui-monospace,monospace}html,body,#lens-stage-mount{margin:0;width:100%;height:100%;overflow:hidden;background:hsl(var(--background));color:hsl(var(--foreground));font-family:var(--lens-font-body)}*{box-sizing:border-box;letter-spacing:0;min-width:0}.lens-stage-root{width:100%;height:100%;max-width:100%;max-height:100%;overflow:hidden;overscroll-behavior:contain;padding:var(--lens-stage-padding);background:linear-gradient(90deg,rgb(var(--lens-grid-line)) 1px,transparent 1px),linear-gradient(0deg,rgb(var(--lens-grid-line-soft)) 1px,transparent 1px),hsl(var(--background));background-size:32px 32px}.lens-stage-frame{transform-origin:top center}.lens-stage-frame p,.lens-stage-frame h1,.lens-stage-frame h2,.lens-stage-frame h3,.lens-stage-frame h4,.lens-stage-frame td,.lens-stage-frame th{overflow-wrap:anywhere}.lens-display{font-family:var(--lens-font-display)}.ui-mono{font-family:var(--lens-font-mono)}.lens-panel{background:var(--lens-panel-background);border-color:var(--lens-panel-border);box-shadow:var(--lens-shadow)}</style>
   </head><body><div id="lens-stage-mount" data-lens-sizing="auto"></div><script src="/dist/lensui.stage.global.js"></script><script>const code=${JSON.stringify(lightcode)};let activeRequestID=null;function summarize(result){return{ok:!!result.ok,error:result.error||null,metadata:result.metadata||null}}function send(message){try{window.parent&&window.parent.postMessage(message,"*")}catch{}}function publish(result,requestID){send({type:"lensui:render-result",requestID:requestID||null,result:summarize(result)})}function publishSize(detail,requestID){send({type:"lensui:size",requestID:requestID||activeRequestID||null,size:detail})}function installSourcePublisher(){const stage=window.lensStage;if(!stage||stage.__lensDocsSourcePublisher)return;const original=stage.setSource.bind(stage);stage.setSource=(id,payload)=>{const ok=original(id,payload);send({type:"lensui:source-update",sourceID:id,payload,ok,requestID:activeRequestID||null});return ok};stage.__lensDocsSourcePublisher=true}document.getElementById("lens-stage-mount")?.addEventListener("lensui:size",(event)=>publishSize(event.detail));function renderLightcode(nextCode,requestID){activeRequestID=requestID||null;installSourcePublisher();const result=window.lensStage.render(nextCode);if(result.ok){${afterRenderScript}}publish(result,requestID);activeRequestID=null;return result}function applyCommand(commandStream,requestID){activeRequestID=requestID||null;installSourcePublisher();const result=window.lensStage.apply(commandStream);publish(result,requestID);activeRequestID=null;return result}window.addEventListener("message",(event)=>{const data=event.data||{};if(data.type==="lensui:render"&&typeof data.lightcode==="string")renderLightcode(data.lightcode,data.requestID);if(data.type==="lensui:apply"&&typeof data.commandStream==="string")applyCommand(data.commandStream,data.requestID)});function run(){if(window.lensStage){installSourcePublisher();renderLightcode(code,"initial")}else setTimeout(run,16)}run();</script></body></html>`;
 }

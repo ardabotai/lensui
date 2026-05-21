@@ -69,7 +69,7 @@ function sourceCommand(sourceID: string, payload: unknown): string {
 function compactSourcePayload(payload: unknown): unknown {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
   const record = payload as Record<string, unknown>;
-  if ("btcCandles" in record || "ethCandles" in record || "solCandles" in record) {
+  if ("btcCandles" in record || "ethCandles" in record) {
     return {
       btc: record.btc,
       btcMove: record.btcMove,
@@ -77,16 +77,12 @@ function compactSourcePayload(payload: unknown): unknown {
       eth: record.eth,
       ethMove: record.ethMove,
       ethTone: record.ethTone,
-      sol: record.sol,
-      solMove: record.solMove,
-      solTone: record.solTone,
       status: record.status,
       clock: record.clock,
       ticks: firstRows(record.ticks, 3),
       candles: {
         btc: rowCount(record.btcCandles),
-        eth: rowCount(record.ethCandles),
-        sol: rowCount(record.solCandles)
+        eth: rowCount(record.ethCandles)
       },
       steps: record.steps
     };
@@ -110,6 +106,7 @@ export function InteractiveLensUIDemo({
   externalApply,
   externalRender,
   afterRenderScript = "",
+  autoResize = true,
   className = "",
   mode = "tabs"
 }: Readonly<{
@@ -119,8 +116,9 @@ export function InteractiveLensUIDemo({
   externalApply?: { id: number; commandStream: string };
   externalRender?: { id: number; lightcode: string };
   afterRenderScript?: string;
+  autoResize?: boolean;
   className?: string;
-  mode?: "tabs" | "split";
+  mode?: "tabs" | "split" | "target";
 }>) {
   const [tab, setTab] = useState<"view" | "lightcode">("view");
   const [draft, setDraft] = useState(lightcode.trim());
@@ -132,6 +130,7 @@ export function InteractiveLensUIDemo({
   const requestID = useRef(0);
   const lastSourceEntryAt = useRef(0);
   const splitMode = mode === "split";
+  const targetMode = mode === "target";
 
   useEffect(() => {
     setDraft(lightcode.trim());
@@ -151,7 +150,9 @@ export function InteractiveLensUIDemo({
     function handleMessage(event: MessageEvent<RenderResultMessage>) {
       if (event.source !== iframeRef.current?.contentWindow) return;
       if (event.data?.type === "lensui:size") {
-        setFrameHeight(normalizedFrameHeight(event.data.size, height ?? minFrameHeight));
+        if (autoResize) {
+          setFrameHeight(normalizedFrameHeight(event.data.size, height ?? minFrameHeight));
+        }
         return;
       }
       if (event.data?.type === "lensui:source-update") {
@@ -179,7 +180,7 @@ export function InteractiveLensUIDemo({
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [height, splitMode]);
+  }, [autoResize, height, splitMode]);
 
   const renderDraft = useCallback(() => {
     const frame = iframeRef.current?.contentWindow;
@@ -259,8 +260,8 @@ export function InteractiveLensUIDemo({
   const lineCount = draft.split("\n").filter(Boolean).length;
 
   return (
-    <div className={`lens-playground ${splitMode ? "split" : ""} ${className}`.trim()}>
-      <div className="lens-playground-toolbar">
+    <div className={`lens-playground ${splitMode ? "split" : ""} ${targetMode ? "target" : ""} ${className}`.trim()}>
+      {targetMode ? null : <div className="lens-playground-toolbar">
         {splitMode ? (
           <div className="lens-live-toolbar">
             <span>Rendered UI</span>
@@ -291,10 +292,20 @@ export function InteractiveLensUIDemo({
         <div className={`lens-render-status ${status.state}`} role={status.state === "error" ? "alert" : "status"}>
           {status.state === "error" ? "Render failed" : status.message}
         </div>
-      </div>
+      </div>}
 
       <div className="lens-playground-body">
-        {splitMode ? (
+        {targetMode ? (
+          <div className="lens-playground-view active" role="tabpanel" aria-label={`${title} live target`}>
+            <iframe
+              key={title}
+              ref={iframeRef}
+              srcDoc={interactiveStageHTML(lightcode.trim(), afterRenderScript)}
+              style={{ height: frameHeight }}
+              title={title}
+            />
+          </div>
+        ) : splitMode ? (
           <>
             <div className="lens-playground-view active" role="tabpanel" aria-label={`${title} rendered UI`}>
               <iframe
@@ -340,7 +351,7 @@ export function InteractiveLensUIDemo({
         )}
       </div>
 
-      <div className="lens-playground-footer">
+      {targetMode ? null : <div className="lens-playground-footer">
         <span>{splitMode ? `${streamEntries.length} stream events` : `${lineCount} lines`}</span>
         {splitMode ? (
           <span>{lineCount} latest lines</span>
@@ -350,7 +361,7 @@ export function InteractiveLensUIDemo({
             <button className="primary" onClick={renderDraft} type="button">Render</button>
           </div>
         )}
-      </div>
+      </div>}
 
       {status.state === "error" ? (
         <p className="lens-playground-error">{status.message}</p>

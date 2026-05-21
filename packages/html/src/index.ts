@@ -343,7 +343,7 @@ export class LensHTMLRenderer {
     const tone = toneTextClass(toneValue);
     const panel = metricPanelClass(toneValue);
     const flashTone = metricFlashTone(flashValue || toneValue);
-    return `<div class="lens-panel rounded-lg border p-4 ${panel}" data-lens-tone="${esc(toneValue || "neutral")}" ${flashTone ? `data-lens-flash="${esc(flashTone)}"` : ""} ${this.attrs(node, "metric")}><div class="font-mono text-[11px] font-semibold uppercase text-muted-foreground">${boundText(this.sources, arg(node, 0), "")}</div><div class="mt-1 lens-display text-2xl font-semibold sm:text-3xl ${tone}" ${bindAttr(arg(node, 1), "text")}>${boundText(this.sources, arg(node, 1), "—")}</div>${arg(node, 2) ? `<div class="mt-1 text-xs text-muted-foreground">${boundText(this.sources, arg(node, 2))}</div>` : ""}</div>`;
+    return `<div class="lens-panel min-h-[112px] rounded-lg border p-4 ${panel}" data-lens-tone="${esc(toneValue || "neutral")}" ${flashTone ? `data-lens-flash="${esc(flashTone)}"` : ""} ${this.attrs(node, "metric")}><div class="font-mono text-[11px] font-semibold uppercase text-muted-foreground">${boundText(this.sources, arg(node, 0), "")}</div><div class="mt-1 lens-display text-2xl font-semibold tabular-nums sm:text-3xl ${tone}" ${bindAttr(arg(node, 1), "text")}>${boundText(this.sources, arg(node, 1), "—")}</div>${arg(node, 2) ? `<div class="mt-1 min-h-4 text-xs text-muted-foreground">${boundText(this.sources, arg(node, 2))}</div>` : ""}</div>`;
   }
 
   private renderChart(node: LensNode): string {
@@ -986,8 +986,13 @@ function layoutAdaptiveGrid(element: HTMLElement, stageRoot: HTMLElement): void 
   const narrowCap = stageWidth < 520 ? 1 : portrait && stageWidth < 720 ? 2 : max;
   const colsByWidth = Math.floor((width + gap) / (min + gap)) || 1;
   const cols = Math.max(1, Math.min(max, narrowCap, colsByWidth));
+  const minHeight = clampNumber(Number(element.dataset.minCellHeight ?? 0), 0, 720);
   element.dataset.lensCols = String(cols);
   element.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+  Array.from(element.children).forEach((child) => {
+    if (!(child instanceof HTMLElement)) return;
+    child.style.minHeight = minHeight > 0 ? `${minHeight}px` : "";
+  });
 }
 
 function observeStageResize(root: HTMLElement): void {

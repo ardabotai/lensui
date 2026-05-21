@@ -94,6 +94,7 @@ export function AgentBridgePanel({
   }, [bridgeOrigin, lensID, shouldConnect, token]);
 
   const prompt = useMemo(() => agentInstructions(bridgeOrigin, lensID, token), [bridgeOrigin, lensID, token]);
+  const hasRendered = messageCount > 0;
 
   useEffect(() => {
     if (!eventURL) return;
@@ -131,37 +132,34 @@ export function AgentBridgePanel({
   }
 
   return (
-    <div className="agent-bridge" data-bridge-origin={bridgeOrigin} data-lens-id={lensID} data-lens-token={token}>
+    <div className={`agent-bridge ${hasRendered ? "streaming" : ""}`} data-bridge-origin={bridgeOrigin} data-lens-id={lensID} data-lens-token={token}>
       <div className="agent-bridge-head">
         <div>
-          <strong>Send lightcode from your agent.</strong>
-          <span>One paste starts the bridge, installs the skill, and targets this live container.</span>
+          <strong>{hasRendered ? "Agent is streaming UI." : "Connect your agent."}</strong>
+          <span>{hasRendered ? "The setup prompt is out of the way; keep rendering to this target." : "Copy these instructions into your local coding agent to target the blank LensUI stage above."}</span>
         </div>
         <span className={`bridge-pill ${status}`}>{status}</span>
       </div>
 
-      <div className="bridge-fields">
-        <label>
-          <span>lensID</span>
-          <code>{lensID}</code>
-        </label>
-        <label>
-          <span>bridge</span>
-          <code>{bridgeOrigin}</code>
-        </label>
-        <label>
-          <span>messages</span>
-          <code>{messageCount}</code>
-        </label>
-      </div>
+      {hasRendered ? (
+        <p className="bridge-summary">{messageCount} render {messageCount === 1 ? "message" : "messages"} received through {bridgeOrigin}.</p>
+      ) : (
+        <>
+          <textarea
+            aria-label="LensUI agent instructions"
+            readOnly
+            spellCheck={false}
+            value={prompt}
+          />
 
-      <div className="bridge-actions">
-        <button className="primary" disabled={lensID === "pending" || token === "pending"} onClick={copyPrompt} type="button">
-          Copy agent instructions
-        </button>
-      </div>
+          <div className="bridge-actions">
+            <button className="primary" disabled={lensID === "pending" || token === "pending"} onClick={copyPrompt} type="button">
+              Copy agent instructions
+            </button>
+          </div>
+        </>
+      )}
 
-      <p className="bridge-summary">Incoming renders append to the lightcode stream beside the live UI.</p>
       {copied ? <span className="bridge-copied">Copied {copied}</span> : null}
     </div>
   );

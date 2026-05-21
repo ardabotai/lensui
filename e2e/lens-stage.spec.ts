@@ -539,6 +539,11 @@ R
     expect(instructions).toContain("npx -y --package @ardabot/lensui@latest lensui skill");
     expect(instructions).toContain("npx -y --package @ardabot/lensui@latest lensui bridge");
     expect(instructions).toContain("/render");
+    expect(instructions).toContain("/apply");
+    expect(instructions).toContain("Custom HTML/CSS/JS/canvas");
+    expect(instructions).toContain("@!|AgentCanvas|html|agent-generated");
+    expect(instructions).toContain("No connected LensUI container");
+    expect(instructions).toContain("A 200 response means the bridge delivered the message");
     const surfaceOrder = await page.evaluate(() => {
       const bridge = document.querySelector<HTMLElement>(".agent-surface .agent-bridge");
       const iframe = document.querySelector<HTMLIFrameElement>(".agent-surface iframe");
@@ -632,6 +637,7 @@ R
       const instructions = await page.getByLabel("LensUI agent instructions").inputValue();
       expect(instructions).toContain("You are controlling a live LensUI container");
       expect(instructions).toContain(bridgeOrigin);
+      expect(instructions).toContain("@!|AgentCanvas|html|agent-generated");
       await expect(page.getByRole("button", { name: "live data" })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "animated art" })).toHaveCount(0);
       await iframeScreenshot(page);
@@ -653,6 +659,29 @@ R
       await expect(demoFrame.getByText("Hello from your agent")).toBeVisible();
       await expect(page.locator(".agent-bridge.streaming")).toBeVisible();
       await expect(page.getByLabel("LensUI agent instructions")).toHaveCount(0);
+
+      const customResponse = await fetch(`${bridgeOrigin}/lens/${bridgeTarget.lensID}/apply`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${bridgeTarget.token}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          commandStream: `!
+@!|TestCanvas|html|agent-generated
+<div class="agent-test-canvas"><canvas></canvas><span>{{0}}</span><script>window.__lensuiTestCanvasRan=(window.__lensuiTestCanvasRan||0)+1;const root=document.currentScript.closest(".agent-test-canvas");const canvas=root.querySelector("canvas");canvas.width=64;canvas.height=32;const ctx=canvas.getContext("2d");ctx.fillStyle="#00ffff";ctx.fillRect(0,0,64,32);</script></div>
+.
+R
+0F|st=studio
+0V|Custom component|Bridge apply
+1TestCanvas|canvas online
+.`
+        })
+      });
+      expect(customResponse.status).toBe(200);
+      await expect(demoFrame.getByText("canvas online")).toBeVisible();
+      await expect(demoFrame.locator(".agent-test-canvas canvas")).toHaveCount(1);
+      expect(await demoFrame.locator("body").evaluate(() => (window as any).__lensuiTestCanvasRan)).toBe(1);
     } finally {
       await closeServerNow(bridgeServer);
     }

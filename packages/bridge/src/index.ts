@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { dirname, resolve } from "node:path";
@@ -377,7 +377,16 @@ function parseCLI(argv: string[]): LensBridgeOptions & { command: "serve" | "ski
   };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+export function isLensBridgeEntrypoint(moduleURL = import.meta.url, argvPath = process.argv[1]): boolean {
+  if (!argvPath) return false;
+  try {
+    return realpathSync(fileURLToPath(moduleURL)) === realpathSync(argvPath);
+  } catch {
+    return fileURLToPath(moduleURL) === argvPath;
+  }
+}
+
+if (isLensBridgeEntrypoint()) {
   const options = parseCLI(process.argv.slice(2));
   if (options.command === "skill") {
     process.stdout.write(readSkill());

@@ -1,9 +1,10 @@
 import { once } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { clearRegistryFile, loadRegistryFromFile, saveRegistryToFile, startLensBridge } from "./index";
+import { clearRegistryFile, isLensBridgeEntrypoint, loadRegistryFromFile, saveRegistryToFile, startLensBridge } from "./index";
 
 describe("@lensui/bridge", () => {
   it("routes authenticated render payloads to a scoped event stream", async () => {
@@ -89,6 +90,21 @@ describe("@lensui/bridge", () => {
 
       await clearRegistryFile({ cwd: dir });
       expect(await loadRegistryFromFile({ cwd: dir })).toEqual({ components: [], styles: [] });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("detects CLI entrypoints through symlinked npm bin paths", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lensui-bin-"));
+    try {
+      const realBin = join(dir, "bridge.js");
+      const linkedBin = join(dir, "lensui");
+      await writeFile(realBin, "#!/usr/bin/env node\n", "utf8");
+      await symlink(realBin, linkedBin);
+
+      expect(isLensBridgeEntrypoint(pathToFileURL(realBin).href, linkedBin)).toBe(true);
+      expect(isLensBridgeEntrypoint(pathToFileURL(realBin).href, join(dir, "other"))).toBe(false);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

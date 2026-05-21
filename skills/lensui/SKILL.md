@@ -7,10 +7,72 @@ description: Generate, revise, validate, and repair LensUI lightcode for agent-r
 
 LensUI is a token-efficient UI runtime for agents. Generate semantic lightcode plus compact LightStyle tokens, not HTML, JSX, CSS, Tailwind, D3, Three.js, or SVG in normal render payloads. The renderer owns DOM structure, default styling, layout fitting, charts, media mounting, live bindings, and host adapters.
 
+## Live Target Fast Path
+
+When the user gives you a LensUI bridge target (`bridge`, `lensID`, and bearer token), do not scaffold an app, create files, or explain the protocol first. Render to the existing browser surface immediately.
+
+1. If needed, start the loopback bridge:
+
+```sh
+npx -y --package @ardabot/lensui@latest lensui bridge --port 5743
+```
+
+2. Prove the connection with `/render`:
+
+```sh
+curl -sS -X POST <bridge>/lens/<lensID>/render \
+  -H "authorization: Bearer <token>" \
+  -H "content-type: application/json" \
+  --data '{"lightcode":"0F|st=mono|f=mono|d=compact\n0V|Hello from your agent|Live LensUI target\n1G|auto|min=180|max=3\n2M|Bridge|connected|local\n2M|Payload|lightcode|compact\n2M|Target|scoped|secure"}'
+```
+
+3. For plain semantic UI, keep using `/render` with `{ "lightcode": "..." }`.
+4. For saved components, styles, patches, or source updates, use `/apply` with `{ "commandStream": "..." }`.
+5. If the response is `404`, the browser target is not connected yet or the token/lensID is wrong. Ask the user to keep the LensUI page open, recopy the prompt, or restart the local bridge.
+
+## Bridge Transport
+
+The public bridge has two HTTP endpoints. A `200` response means the message was delivered to at least one connected browser container; browser render errors may still appear inside the stage.
+
+- `POST /lens/:lensID/render` with `{ "lightcode": "..." }`: full semantic lightcode render.
+- `POST /lens/:lensID/apply` with `{ "commandStream": "..." }`: patches, saved components, saved styles, source updates, and page actions.
+
+Conceptual tool mapping:
+
+| Intent | Bridge transport |
+| --- | --- |
+| `render(lightcode)` | `/render` body `{ "lightcode": "..." }` or `/apply` command `R` |
+| `patch(offset, delete, lightcode)` | `/apply` command `^|offset|delete` |
+| `save_component(name, kind, source)` | `/apply` command `@!|name|kind|trust` |
+| `patch_component(name, off, del, source)` | `/apply` command `@^|name|off|del` |
+| `delete_component(name)` | `/apply` command `@-|name` |
+| `save_style(name, source)` | `/apply` command `Y!|name|trust` |
+| `patch_style(name, off, del, source)` | `/apply` command `Y^|name|off|del` |
+| `delete_style(name)` | `/apply` command `Y-|name` |
+| `set_default_style(name)` | `/apply` command `Y*|name` |
+| `setSource(id, payload)` | `/apply` command `S|id|content-type` |
+| page navigation/action | `/apply` command `P|action` |
+
+Command stream wire format:
+
+```text
+!
+CMD|field|field
+block body for block commands
+.
+```
+
+- First non-blank line must be `!`.
+- Block commands read following lines until a lone `.`. Escape a literal lone dot as `\.`.
+- Full command set: `R`, `^`, `@!`, `@^`, `@-`, `Y!`, `Y^`, `Y-`, `Y*`, `S`, `P`.
+- Component `kind`: `a`/`alias`, `h`/`html`, `r`/`react`, `s`/`swiftui`.
+- Trust: `b`/`built-in`, `u`/`user-saved`, `g`/`agent-generated`, `m`/`remote-imported`. Use `agent-generated` or `g` for normal agent-created components.
+- `S|id|application/json` updates a live source; body should usually be JSON. It does not re-render new lightcode; it updates existing `$id.path` bindings.
+
 ## Core Workflow
 
-1. For a new topic or major layout change, call `render(dsl)` with a full lightcode document.
-2. For a small revision, call `read_dsl(offset?, limit?)`, then `patch(offset, delete, dsl)`.
+1. For a new topic or major layout change, call `render(dsl)` with a full lightcode document. Over the bridge, use `/render`.
+2. For a small revision, call `read_dsl(offset?, limit?)`, then `patch(offset, delete, dsl)`. Over the bridge, use `/apply` with `^|offset|delete`.
    Use `patch` for small edits after reading the current lightcode.
 3. Put `0F|0` first unless preserving an existing frame line. Every render should carry its visual frame as lightcode.
 4. Prefix every lightcode line with a base36 depth token. Do not indent.
@@ -218,6 +280,150 @@ render("0F|0\n0V|Market\n1KPI|ETH|$4100|spot")
 Use `kind=html` or `kind=react` for genuinely custom interactive or animated components that built-ins cannot express. Save it once, then instantiate it by name with short args/props. A persistent host can store saved components in localStorage, local files, or another adapter, so future turns can reuse the component without resending the full HTML/JS/CSS source.
 
 JavaScript rule: JS belongs in saved components, not normal render payloads. For custom interaction, animation, D3, Three.js, canvas, or app-like widgets, call `save_component(kind="html"|"react")`, then render the saved name with short args/props. Small interactions should use renderer-owned built-ins or style tokens.
+
+## Custom HTML/CSS/JS/Canvas
+
+Use custom components when the user asks for interaction, custom animation, canvas/WebGL, complex DOM, or visuals the built-ins cannot express. Do not send raw HTML as a normal render. Register it once, then render a short component line.
+
+What permissive hosts allow:
+
+- `kind=html` component source is mounted as real HTML.
+- `<style>` tags apply.
+- `<script>` tags execute after mount. Canvas, RAF loops, WebGL, D3, Three.js, DOM events, and local component state can work.
+- The component is saved in the runtime workspace. Later `/render` calls preserve registered components and can instantiate them by name.
+- Templating is simple string replacement: `{{0}}`, `{{1}}` from args; `{{key}}` from props; `{{children}}` from nested LensUI children.
+
+Command stream shape:
+
+```text
+!
+@!|ComponentName|html|agent-generated
+<div>raw HTML/CSS/JS template here</div>
+.
+R
+0F|st=studio|d=compact
+0V|Custom surface|Rendered from a saved component
+1ComponentName|First arg|accent=cyan
+.
+```
+
+Post that command stream to `/apply`, not `/render`.
+
+HTML component rules:
+
+- Keep component names alphanumeric with `_` or `-`.
+- Avoid secrets, tokens, payment forms, destructive actions, and privileged host calls in component code.
+- Prefer one self-contained root element. Scope classes/data attributes to the component name to avoid collisions.
+- If a script uses `document.currentScript`, put that script inside the component root and use `document.currentScript.parentElement`.
+- If a component fails, simplify to static HTML first, then add script/canvas back.
+- Use the runtime container contract, not `document.body`, for sizing.
+
+Container sizing facts:
+
+- `#lens-stage-root` is the actual render container.
+- `#lens-stage-frame` is the centered content column inside it.
+- `data-lens-sizing="stage"` means fixed-height stage; overflow scrolls when needed.
+- `data-lens-sizing="auto"` or `content` means the host can grow around rendered content.
+- The runtime writes `--lens-container-width` and `--lens-container-height` plus `data-lens-container-width`, `data-lens-container-height`, `data-lens-size`, `data-lens-aspect`, and `data-lens-flow` on `#lens-stage-root`.
+- Built-in media, charts, `X`, and `VV` intentionally cap their height to a fraction of the container. If the user wants a full-container custom visual, use a saved HTML/canvas component.
+
+Full-container custom canvas recipe:
+
+```text
+!
+@!|FullCanvas|html|agent-generated
+<div class="lens-full-canvas"><canvas></canvas><strong>{{0}}</strong><script>
+(() => {
+  const root = document.currentScript.parentElement;
+  const stage = root.closest("#lens-stage-root");
+  const c = root.querySelector("canvas");
+  const ctx = c.getContext("2d");
+  let t = 0;
+  function fit(){
+    const box = root.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    c.width = Math.max(1, Math.floor(box.width * dpr));
+    c.height = Math.max(1, Math.floor(box.height * dpr));
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  function draw(){
+    fit(); t += 0.02;
+    const w = c.width / (window.devicePixelRatio || 1), h = c.height / (window.devicePixelRatio || 1);
+    ctx.fillStyle = "#050607"; ctx.fillRect(0,0,w,h);
+    for (let y=0;y<h;y+=10) for (let x=0;x<w;x+=10) {
+      const v = Math.sin(x*.018+t)+Math.cos(y*.024-t);
+      ctx.fillStyle = `hsl(${190+v*55} 90% ${44+v*8}%)`;
+      ctx.fillRect(x,y,8,8);
+    }
+    requestAnimationFrame(draw);
+  }
+  new ResizeObserver(fit).observe(stage || root);
+  draw();
+})();
+</script></div>
+<style>
+#lens-stage-root:has(.lens-full-canvas){padding:0}
+#lens-stage-frame:has(.lens-full-canvas){max-width:none;min-height:var(--lens-container-height,100%);gap:0;justify-content:stretch}
+.lens-full-canvas{position:relative;width:var(--lens-container-width,100%);height:var(--lens-container-height,100%);min-height:320px;overflow:hidden;background:#050607}
+.lens-full-canvas canvas{display:block;width:100%;height:100%;image-rendering:pixelated}
+.lens-full-canvas strong{position:absolute;left:18px;bottom:14px;font:700 13px var(--lens-font-mono);text-transform:uppercase;color:white}
+</style>
+.
+R
+0F|st=studio|d=compact
+0V
+1FullCanvas|full-container canvas
+.
+```
+
+Use this full-container pattern only when the visual should own the stage. For ordinary panels, keep the component inside normal LensUI layout.
+
+Live source update over the bridge:
+
+```text
+!
+S|market|application/json
+{"btc":"$78,100","btcMove":"+0.3%","btcTone":"success"}
+.
+```
+
+Canvas component example:
+
+```text
+!
+@!|PixelField|html|agent-generated
+<div class="px-field"><canvas></canvas><strong>{{0}}</strong><script>
+(() => {
+  const root = document.currentScript.parentElement;
+  const c = root.querySelector("canvas");
+  const ctx = c.getContext("2d");
+  let t = 0;
+  function fit(){ c.width = Math.max(1, root.clientWidth / 4); c.height = Math.max(1, root.clientHeight / 4); }
+  function draw(){
+    fit(); t += 0.03;
+    const img = ctx.createImageData(c.width, c.height);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const p = i / 4, x = p % c.width, y = (p / c.width) | 0;
+      const v = Math.sin(x * .15 + t) + Math.cos(y * .12 - t);
+      img.data[i] = 80 + v * 60; img.data[i + 1] = 180 + v * 35; img.data[i + 2] = 220; img.data[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0); requestAnimationFrame(draw);
+  }
+  draw();
+})();
+</script></div>
+<style>
+.px-field{position:relative;min-height:260px;border:1px solid hsl(var(--border));background:#050607;overflow:hidden}
+.px-field canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
+.px-field strong{position:absolute;left:18px;bottom:14px;font:700 13px var(--lens-font-mono);text-transform:uppercase;color:white}
+</style>
+.
+R
+0F|st=studio|d=compact
+0V|Canvas field|Agent-authored component
+1PixelField|live pixel noise
+.
+```
 
 Safety stance: raw HTML/CSS/JS components are a power feature and may be enabled by default in permissive hosts. Do not put secrets, auth tokens, billing logic, credential collection, destructive effects, or privileged host calls inside component code. If an action needs external side effects, route it through host-owned tools or APIs that can validate, gate, and confirm it. Assume host policy may reject or sandbox raw components; if that happens, fall back to semantic built-ins or ask the host to promote a reviewed component.
 

@@ -83,6 +83,27 @@ curl -X POST http://127.0.0.1:5743/lens/<lensID>/render \
 
 Use `npx -y --package @ardabot/lensui@latest lensui skill` to print the LensUI agent skill from the npm package. The bridge binds to loopback by default, requires the per-container token, and routes only to browser containers that have already opened the matching event stream.
 
+The bridge has two write endpoints:
+
+- `POST /lens/:lensID/render` with `{ "lightcode": "..." }` for ordinary semantic renders.
+- `POST /lens/:lensID/apply` with `{ "commandStream": "..." }` for patches, saved components, saved styles, source updates, and page actions.
+
+Command streams start with `!`. Block commands continue until a lone `.`:
+
+```text
+!
+@!|CanvasPanel|html|agent-generated
+<div><canvas></canvas><script>/* custom component code */</script></div>
+.
+R
+0F|st=studio
+0V|Custom UI|Saved component
+1CanvasPanel
+.
+```
+
+`/render` and `/apply` returning `200` means the bridge delivered the message to a connected browser. If the browser target is not open or the token is stale, the bridge returns `No connected LensUI container for that lensID/token.`
+
 From this repository:
 
 ```sh

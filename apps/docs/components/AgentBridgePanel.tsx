@@ -20,6 +20,37 @@ const helloLightcode = `0F|st=mono|f=mono|d=compact
 2M|Target|scoped|secure
 1T|This surface was rendered through the local LensUI bridge.`;
 
+const canvasCommandStream = `!
+@!|AgentCanvas|html|agent-generated
+<div class="agent-canvas"><canvas></canvas><strong>{{0}}</strong><script>
+(() => {
+  const root = document.currentScript.parentElement;
+  const c = root.querySelector("canvas"), ctx = c.getContext("2d");
+  let t = 0;
+  function draw(){
+    c.width = Math.max(1, root.clientWidth / 4); c.height = Math.max(1, root.clientHeight / 4); t += .04;
+    const img = ctx.createImageData(c.width, c.height);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const p = i / 4, x = p % c.width, y = (p / c.width) | 0, v = Math.sin(x * .18 + t) + Math.cos(y * .14 - t);
+      img.data[i] = 80 + v * 50; img.data[i + 1] = 190 + v * 30; img.data[i + 2] = 235; img.data[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0); requestAnimationFrame(draw);
+  }
+  draw();
+})();
+</script></div>
+<style>
+.agent-canvas{position:relative;min-height:260px;border:1px solid hsl(var(--border));background:#050607;overflow:hidden}
+.agent-canvas canvas{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated}
+.agent-canvas strong{position:absolute;left:18px;bottom:14px;font:700 13px var(--lens-font-mono);text-transform:uppercase;color:white}
+</style>
+.
+R
+0F|st=studio|d=compact
+0V|Custom canvas|Saved HTML/CSS/JS component
+1AgentCanvas|hello from custom canvas
+.`;
+
 function newSecret(): string {
   const bytes = new Uint8Array(24);
   crypto.getRandomValues(bytes);
@@ -37,6 +68,13 @@ function curlRender(bridgeOrigin: string, lensID: string, token: string, lightco
   --data ${JSON.stringify(JSON.stringify({ lightcode }))}`;
 }
 
+function curlApply(bridgeOrigin: string, lensID: string, token: string, commandStream = canvasCommandStream): string {
+  return `curl -X POST ${bridgeOrigin}/lens/${lensID}/apply \\
+  -H "authorization: Bearer ${token}" \\
+  -H "content-type: application/json" \\
+  --data ${JSON.stringify(JSON.stringify({ commandStream }))}`;
+}
+
 function agentInstructions(bridgeOrigin: string, lensID: string, token: string): string {
   return `You are controlling a live LensUI container in the user's browser.
 
@@ -45,17 +83,28 @@ Target:
 - bridge: ${bridgeOrigin}
 - auth: Bearer ${token}
 
-Setup:
-1. Read the LensUI agent skill from the npm package:
+Rules:
+- Do not scaffold a React app, write an HTML file, or start a web server. The browser already has a LensUI runtime mounted.
+- First, run the proof render below exactly. Once it returns {"ok":true}, keep posting lightcode or command streams to this same target.
+- Use /render for plain semantic lightcode.
+- Use /apply for saved components, custom HTML/CSS/JS/canvas, patches, styles, or source updates.
+- If you get "No connected LensUI container for that lensID/token", the browser EventSource is not connected yet or this prompt is stale. Ask the user to keep this page open, refresh it, or copy a fresh prompt.
+- A 200 response means the bridge delivered the message to the browser. If the UI does not change, simplify the lightcode/component and retry; render errors appear in the browser surface.
+
+Read the LensUI skill:
    npx -y --package @ardabot/lensui@latest lensui skill > LENSUI_SKILL.md
-   Read LENSUI_SKILL.md and follow it when generating lightcode.
-2. If the bridge is not already running, start it in a background terminal:
+   Read LENSUI_SKILL.md, especially "Live Target Fast Path" and "Custom HTML/CSS/JS/Canvas".
+
+If the bridge is not already running, start it:
    npx -y --package @ardabot/lensui@latest lensui bridge --port ${new URL(bridgeOrigin).port || "5743"}
 
-First render, to prove the connection works:
+1. Proof render:
 ${curlRender(bridgeOrigin, lensID, token)}
 
-After that, keep rendering compact LensUI lightcode to the same endpoint. Use semantic LensUI nodes for common UI. When you need custom HTML, CSS, JavaScript, canvas, D3, Three.js, or app-like interaction, save a component once and then refer to it by name in later renders so the browser/container can persist and reuse it.`;
+2. Custom HTML/CSS/JS/canvas example using /apply:
+${curlApply(bridgeOrigin, lensID, token)}
+
+After that, generate the actual UI the user asked for. Use semantic LensUI nodes for common UI. For custom HTML, CSS, JavaScript, canvas, D3, Three.js, or app-like interaction, register a saved component once with @!, then render it by name with a short line like 1AgentCanvas|label.`;
 }
 
 async function copy(value: string): Promise<void> {

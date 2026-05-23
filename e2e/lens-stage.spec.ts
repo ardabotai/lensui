@@ -605,19 +605,10 @@ R
     await expect(page.getByText("Live Forecast", { exact: true })).toHaveCount(0);
     const heroFrame = page.frameLocator('iframe[title="LensUI live runtime preview"]');
     await expect(heroFrame.locator("#lens-stage-root")).toBeVisible();
-    await expect(heroFrame.getByText("Crypto Live Tape")).toBeVisible();
+    await expect(heroFrame.locator('[data-lens-component="metric"]')).toHaveCount(0);
     await expect(heroFrame.getByText("SOL/USD")).toHaveCount(0);
     await expect(heroFrame.getByText("flat")).toHaveCount(0);
-    const heroBook = heroFrame.locator("[data-lens-order-book]");
-    await expect(heroBook).toBeVisible();
-    await expect(heroBook).toContainText("BTC/USD Book");
-    await expect(heroBook).toContainText("ASK");
-    await expect(heroBook).toContainText("BID");
-    const heroBookBody = await heroFrame.locator("[data-lens-order-book-body]").evaluate((element) => ({
-      clientHeight: element.clientHeight,
-      scrollHeight: element.scrollHeight
-    }));
-    expect(heroBookBody.scrollHeight).toBeLessThanOrEqual(heroBookBody.clientHeight + 1);
+    await expectHeroOrderBookFits(page);
 
     const bridgeServer = startLensBridge({ port: 0 });
     await once(bridgeServer, "listening");
@@ -710,31 +701,27 @@ R
     expect(health.errors).toEqual([]);
   });
 
-  test("keeps docs homepage and LensUI iframe previews inside a phone viewport", async ({ page }) => {
+  test("keeps docs homepage and LensUI hero order book inside common viewports", async ({ page }) => {
     const health = collectPageHealth(page);
 
-    await page.setViewportSize({ width: 390, height: 1200 });
     await mockCoinbaseMarketRoutes(page);
-    await page.goto(siteOrigin);
-    await expect(page.getByRole("heading", { name: "Next-gen UI isn't using AI to generate code to ship to everybody. It's AI streaming UI to each user live.", exact: true })).toBeVisible();
+    for (const viewport of [
+      { name: "phone", width: 390, height: 1200, size: "narrow" },
+      { name: "tablet", width: 768, height: 1024, size: "compact" },
+      { name: "desktop", width: 1280, height: 900, size: "compact" }
+    ]) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await page.goto(siteOrigin);
+      await expect(page.getByRole("heading", { name: "Next-gen UI isn't using AI to generate code to ship to everybody. It's AI streaming UI to each user live.", exact: true })).toBeVisible();
 
-    const docWidth = await page.evaluate(() => document.documentElement.clientWidth);
-    const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
-    expect(scrollWidth).toBeLessThanOrEqual(docWidth + 1);
+      const docWidth = await page.evaluate(() => document.documentElement.clientWidth);
+      const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+      expect(scrollWidth, viewport.name).toBeLessThanOrEqual(docWidth + 1);
 
-    const heroFrame = page.frameLocator('iframe[title="LensUI live runtime preview"]');
-    await expect(heroFrame.locator("#lens-stage-root")).toHaveAttribute("data-lens-size", "narrow");
-    await expect(heroFrame.locator("[data-lens-adaptive-grid]").first()).toHaveAttribute("data-lens-cols", "1");
-    await expect(heroFrame.locator('[data-lens-component="metric"]').filter({ hasText: "ETH/USD" })).toBeHidden();
-    await expect(heroFrame.locator("[data-lens-order-book]")).toBeVisible();
-    const heroBookFit = await heroFrame.locator("[data-lens-order-book]").evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      return {
-        bottom: rect.bottom,
-        viewportHeight: document.documentElement.clientHeight
-      };
-    });
-    expect(heroBookFit.bottom).toBeLessThanOrEqual(heroBookFit.viewportHeight + 1);
+      const heroFrame = page.frameLocator('iframe[title="LensUI live runtime preview"]');
+      await expect(heroFrame.locator("#lens-stage-root")).toHaveAttribute("data-lens-size", viewport.size);
+      await expectHeroOrderBookFits(page, viewport.name);
+    }
     expect(health.errors).toEqual([]);
   });
 });
@@ -759,6 +746,32 @@ function collectPageHealth(page: Page): { errors: string[] } {
     errors.push(error.message);
   });
   return { errors };
+}
+
+async function expectHeroOrderBookFits(page: Page, label = "hero"): Promise<void> {
+  const heroFrame = page.frameLocator('iframe[title="LensUI live runtime preview"]');
+  const heroBook = heroFrame.locator("[data-lens-order-book]");
+  await expect(heroFrame.locator('[data-lens-component="metric"]'), label).toHaveCount(0);
+  await expect(heroBook, label).toBeVisible();
+  await expect(heroBook, label).toContainText("BTC/USD Book");
+  await expect(heroBook, label).toContainText("ASK");
+  await expect(heroBook, label).toContainText("BID");
+  const fit = await heroBook.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const root = document.querySelector<HTMLElement>("#lens-stage-root");
+    const body = document.querySelector<HTMLElement>("[data-lens-order-book-body]");
+    return {
+      bottom: rect.bottom,
+      viewportHeight: document.documentElement.clientHeight,
+      rootClientHeight: root?.clientHeight ?? 0,
+      rootScrollHeight: root?.scrollHeight ?? 0,
+      bodyClientHeight: body?.clientHeight ?? 0,
+      bodyScrollHeight: body?.scrollHeight ?? 0
+    };
+  });
+  expect(fit.bottom, label).toBeLessThanOrEqual(fit.viewportHeight + 1);
+  expect(fit.rootScrollHeight, label).toBeLessThanOrEqual(fit.rootClientHeight + 1);
+  expect(fit.bodyScrollHeight, label).toBeLessThanOrEqual(fit.bodyClientHeight + 1);
 }
 
 async function mockCoinbaseMarketRoutes(page: Page): Promise<void> {

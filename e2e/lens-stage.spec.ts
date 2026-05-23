@@ -126,6 +126,7 @@ test.describe("LensUI browser stage runtime", () => {
 0V|Live Brief|Waiting
 1M|Headline|$news.headline|source
 1NL|Latest||$news.items
+1OB|BTC/USD|$news.spread|items=$news.book|depth=5|h=205
 1D
 2O|One
 3T|Page one
@@ -139,7 +140,9 @@ test.describe("LensUI browser stage runtime", () => {
     const handled = await page.evaluate(() => {
       return window.lensStage!.setSource("news", {
         headline: "Updated from cache",
-        items: "Story A,Desk;Story B,Wire"
+        items: "Story A,Desk;Story B,Wire",
+        spread: "spread 0.13 / 13.0 bps",
+        book: "ask^100.45^0.32^0.32;ask^100.38^0.18^0.50;ask^100.31^0.41^0.91;ask^100.24^0.27^1.18;ask^100.17^0.35^1.53;bid^100.12^0.44^0.44;bid^100.05^0.21^0.65;bid^99.98^0.52^1.17;bid^99.91^0.36^1.53;bid^99.84^0.29^1.82"
       });
     });
 
@@ -147,6 +150,15 @@ test.describe("LensUI browser stage runtime", () => {
     await expect(page.getByText("Updated from cache")).toBeVisible();
     await expect(page.getByText("Story A")).toBeVisible();
     await expect(page.getByText("Story B")).toBeVisible();
+    await expect(page.locator("[data-lens-order-book]")).toBeVisible();
+    await expect(page.locator("[data-lens-order-book]")).toContainText("ASK");
+    await expect(page.locator("[data-lens-order-book]")).toContainText("BID");
+    await expect(page.locator("[data-lens-order-book]")).toContainText("spread 0.13 / 13.0 bps");
+    const bookBody = await page.locator("[data-lens-order-book-body]").evaluate((element) => ({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight
+    }));
+    expect(bookBody.scrollHeight).toBeLessThanOrEqual(bookBody.clientHeight + 1);
 
     const deck = page.locator("[data-lens-deck]");
     await expect(deck).toHaveAttribute("data-lens-page", "0");
@@ -596,18 +608,16 @@ R
     await expect(heroFrame.getByText("Crypto Live Tape")).toBeVisible();
     await expect(heroFrame.getByText("SOL/USD")).toHaveCount(0);
     await expect(heroFrame.getByText("flat")).toHaveCount(0);
-    const feedMetric = heroFrame.locator('[data-lens-component="metric"]').filter({ hasText: "Feed" });
-    await expect(feedMetric).toHaveAttribute("data-lens-tone", "neutral");
-    const feedLayout = await feedMetric.evaluate((element) => {
-      const frame = element.closest<HTMLElement>("#lens-stage-frame");
-      return {
-        inGrid: Boolean(element.parentElement?.hasAttribute("data-lens-adaptive-grid")),
-        feedWidth: element.getBoundingClientRect().width,
-        frameWidth: frame?.getBoundingClientRect().width ?? 0
-      };
-    });
-    expect(feedLayout.inGrid).toBe(false);
-    expect(feedLayout.feedWidth).toBeGreaterThanOrEqual(feedLayout.frameWidth - 2);
+    const heroBook = heroFrame.locator("[data-lens-order-book]");
+    await expect(heroBook).toBeVisible();
+    await expect(heroBook).toContainText("BTC/USD Book");
+    await expect(heroBook).toContainText("ASK");
+    await expect(heroBook).toContainText("BID");
+    const heroBookBody = await heroFrame.locator("[data-lens-order-book-body]").evaluate((element) => ({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight
+    }));
+    expect(heroBookBody.scrollHeight).toBeLessThanOrEqual(heroBookBody.clientHeight + 1);
 
     const bridgeServer = startLensBridge({ port: 0 });
     await once(bridgeServer, "listening");
@@ -783,6 +793,22 @@ async function mockCoinbaseMarketRoutes(page: Page): Promise<void> {
       return [t, Number(low.toFixed(4)), Number(high.toFixed(4)), Number(open.toFixed(4)), Number(close.toFixed(4)), 12 + index];
     });
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(rows) });
+  });
+
+  await page.route("https://api.exchange.coinbase.com/products/**/book**", async (route) => {
+    const product = productFromURL(route.request().url()) ?? "BTC-USD";
+    const base = bases[product] ?? 100;
+    const bids = Array.from({ length: 12 }, (_, index) => [
+      (base - 5 - index * 4).toFixed(2),
+      (0.18 + index * 0.035).toFixed(4),
+      1 + (index % 3)
+    ]);
+    const asks = Array.from({ length: 12 }, (_, index) => [
+      (base + 5 + index * 4).toFixed(2),
+      (0.14 + index * 0.031).toFixed(4),
+      1 + (index % 2)
+    ]);
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ bids, asks }) });
   });
 }
 

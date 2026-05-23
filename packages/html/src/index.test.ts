@@ -229,14 +229,17 @@ describe("@lensui/html", () => {
       btcMove: "▲ 0.250%",
       btcTone: "success",
       btcFlash: "success",
-      candles: "09:00,100,104,99,103;09:05,103,105,101,102;09:10,102,106,101,105"
+      candles: "09:00,100,104,99,103;09:05,103,105,101,102;09:10,102,106,101,105",
+      book: "ask^100.45^0.32^0.32;ask^100.38^0.18^0.50;bid^100.25^0.21^0.21;bid^100.12^0.44^0.65",
+      bookSpread: "spread 0.13 / 13.0 bps"
     });
 
     const result = renderer.render(`0DS|market|https://example.com/market.json
 0F|st=studio
 0V|Crypto
 1M|BTC/USD|$market.btc|$market.btcMove|tone=$market.btcTone|flash=$market.btcFlash
-1H|candle|$market.candles|BTC 3H / 5M|h=180`);
+1H|candle|$market.candles|BTC 3H / 5M|h=180
+1OB|BTC/USD Book|$market.bookSpread|items=$market.book|depth=2|h=130`);
 
     expect(result.html).toContain(`data-lens-tone="success"`);
     expect(result.html).toContain(`data-lens-flash="success"`);
@@ -248,6 +251,12 @@ describe("@lensui/html", () => {
     expect(result.html).toContain("BTC 3H / 5M");
     expect(result.html).toContain("hsl(var(--success))");
     expect(result.html).toContain("hsl(var(--destructive))");
+    expect(result.html).toContain("data-lens-order-book");
+    expect(result.html).toContain("order-book");
+    expect(result.html).toContain("ASK");
+    expect(result.html).toContain("BID");
+    expect(result.html).toContain("spread 0.13 / 13.0 bps");
+    expect(result.html).toContain("100.45");
   });
 
   it("covers alternate branches for semantic renderers", () => {

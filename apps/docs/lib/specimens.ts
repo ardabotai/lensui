@@ -98,27 +98,29 @@ export function frameHTML(lightcode: string): string {
 
 export const liveMarketLightcode = `0DS|market|wss://ws-feed.exchange.coinbase.com|mode=stream
 0DS|candles|https://api.exchange.coinbase.com/products/BTC-USD/candles|ttl=300|mode=poll
+0DS|book|wss://ws-feed.exchange.coinbase.com|mode=stream
 0F|st=studio
 0Y|hot|bg=card|bd=fg/24|p=4|r=2
 0V|Crypto Live Tape|Coinbase public ticker
 1G|auto|min=210|max=2|mh=128
 2M|BTC/USD|$market.btc|$market.btcMove|tone=$market.btcTone|flash=$market.btcFlash|s=hot
 2M|ETH/USD|$market.eth|$market.ethMove|tone=$market.ethTone|flash=$market.ethFlash|s=hot
-1G|auto|min=320|max=2|mh=245
-2H|candle|$market.btcCandles|BTC 3H / 5M|h=210
-2H|candle|$market.ethCandles|ETH 3H / 5M|h=210
-1G|auto|min=280|max=2|mh=260
+1G|auto|min=300|max=2|mh=232
+2H|candle|$market.btcCandles|BTC 3H / 5M|h=200
+2OB|BTC/USD Book|$market.bookSpread|items=$market.book|depth=5|h=205
+1G|auto|min=260|max=2|mh=230
 2TL|Recent tape|$market.clock|items=$market.ticks
 1ST|Feed health|$market.status|items=$market.steps`;
 
 export const heroMarketLightcode = `0DS|market|wss://ws-feed.exchange.coinbase.com|mode=stream
+0DS|book|wss://ws-feed.exchange.coinbase.com|mode=stream
 0F|st=studio|d=compact
 0Y|hot|bg=card|bd=fg/24|p=4|r=2
 0V|Crypto Live Tape|Coinbase public ticker
 1G|auto|min=220|max=2|mh=104
 2M|BTC/USD|$market.btc|$market.btcMove|tone=$market.btcTone|flash=$market.btcFlash|s=hot
 2M|ETH/USD|$market.eth|$market.ethMove|tone=$market.ethTone|flash=$market.ethFlash|s=hot
-1M|Feed|$market.status|$market.clock|hide=narrow,portrait`;
+1OB|BTC/USD Book|$market.bookSpread|items=$market.book|depth=4|h=150`;
 
 export const liveMarketScript = `
     if (window.__lensMarketSocket) {
@@ -127,18 +129,25 @@ export const liveMarketScript = `
     }
     if (window.__lensMarketFallbackInterval) clearInterval(window.__lensMarketFallbackInterval);
     if (window.__lensMarketCandleInterval) clearInterval(window.__lensMarketCandleInterval);
+    if (window.__lensMarketBookInterval) clearInterval(window.__lensMarketBookInterval);
 
     const products = ["BTC-USD", "ETH-USD"];
+    const bookProduct = "BTC-USD";
     const priceState = new Map();
     const moveState = new Map();
     const directionState = new Map();
     const candleState = new Map();
+    const orderBookState = { bids: new Map(), asks: new Map(), spread: "spread waiting", source: "waiting for level2 book" };
     const recentTicks = [];
     const btcSeries = [34, 36, 35, 39, 38, 42, 41, 44];
     let tickCount = 0;
     let feedStatus = "connecting to Coinbase WebSocket";
     let fallbackStarted = false;
     let candleRefreshCount = 0;
+    let bookRefreshCount = 0;
+    let bookStreamStarted = false;
+    let lastBookPublish = 0;
+    let pendingBookPublish = false;
     let lastFlashProduct = "";
     let lastFlashTone = "";
 
@@ -191,6 +200,23 @@ export const liveMarketScript = `
       return date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
     }
 
+    function compactPrice(value) {
+      const price = Number(value);
+      if (!Number.isFinite(price)) return "—";
+      const digits = price >= 1000 ? 0 : price >= 100 ? 2 : 3;
+      return price.toLocaleString("en-US", { maximumFractionDigits: digits, minimumFractionDigits: digits >= 2 ? 2 : 0 });
+    }
+
+    function compactSize(value) {
+      const size = Number(value);
+      if (!Number.isFinite(size)) return "—";
+      return size >= 10
+        ? size.toFixed(1)
+        : size >= 1
+          ? size.toFixed(2)
+          : size.toFixed(4);
+    }
+
     function candleString(product) {
       const candles = candleState.get(product) || [];
       return candles.slice(-36).map((candle) => [
@@ -218,6 +244,117 @@ export const liveMarketScript = `
         };
       }
       candleState.set(product, candles.slice(-36));
+    }
+
+    function setBookLevel(levels, priceValue, sizeValue) {
+      const price = Number(priceValue);
+      const size = Number(sizeValue);
+      if (!Number.isFinite(price) || !Number.isFinite(size)) return false;
+      if (size <= 0) levels.delete(price);
+      else levels.set(price, size);
+      return true;
+    }
+
+    function sortedBook(side) {
+      return Array.from(orderBookState[side].entries())
+        .filter((level) => Number.isFinite(level[0]) && Number.isFinite(level[1]) && level[1] > 0)
+        .sort((a, b) => side === "bids" ? b[0] - a[0] : a[0] - b[0]);
+    }
+
+    function bestPrice(side) {
+      let best;
+      for (const [price, size] of orderBookState[side].entries()) {
+        if (!Number.isFinite(price) || !Number.isFinite(size) || size <= 0) continue;
+        if (best == null) best = price;
+        else if (side === "bids" && price > best) best = price;
+        else if (side === "asks" && price < best) best = price;
+      }
+      return best;
+    }
+
+    function updateBookSpread(source) {
+      const bestBid = bestPrice("bids");
+      const bestAsk = bestPrice("asks");
+      if (Number.isFinite(bestBid) && Number.isFinite(bestAsk)) {
+        const spread = Math.max(0, bestAsk - bestBid);
+        const bps = bestBid > 0 ? (spread / bestBid) * 10000 : 0;
+        orderBookState.spread = "spread " + compactPrice(spread) + " / " + bps.toFixed(1) + " bps";
+      }
+      orderBookState.source = source;
+    }
+
+    function bookRows() {
+      const rows = [];
+      for (const side of ["asks", "bids"]) {
+        let cumulative = 0;
+        for (const [price, size] of sortedBook(side).slice(0, 5)) {
+          cumulative += size;
+          rows.push([
+            side === "asks" ? "ask" : "bid",
+            compactPrice(price),
+            compactSize(size),
+            compactSize(cumulative)
+          ].join("^"));
+        }
+      }
+      return rows.join(";");
+    }
+
+    function stopBookPolling() {
+      if (!window.__lensMarketBookInterval) return;
+      clearInterval(window.__lensMarketBookInterval);
+      window.__lensMarketBookInterval = null;
+    }
+
+    function publishBookMarket(immediate = false) {
+      const now = Date.now();
+      if (immediate || now - lastBookPublish > 250) {
+        lastBookPublish = now;
+        publishMarket();
+        return;
+      }
+      if (pendingBookPublish) return;
+      pendingBookPublish = true;
+      window.setTimeout(() => {
+        pendingBookPublish = false;
+        lastBookPublish = Date.now();
+        publishMarket();
+      }, 250);
+    }
+
+    function applyBookSnapshot(payload, source) {
+      if (!Array.isArray(payload?.bids) || !Array.isArray(payload?.asks)) return false;
+      const bids = new Map();
+      const asks = new Map();
+      for (const level of payload.bids) setBookLevel(bids, level?.[0], level?.[1]);
+      for (const level of payload.asks) setBookLevel(asks, level?.[0], level?.[1]);
+      orderBookState.bids = bids;
+      orderBookState.asks = asks;
+      updateBookSpread(source);
+      bookRefreshCount += 1;
+      if (source.startsWith("level2")) {
+        bookStreamStarted = true;
+        stopBookPolling();
+      }
+      publishBookMarket(true);
+      return true;
+    }
+
+    function applyBookUpdate(message) {
+      if (message.product_id !== bookProduct || !Array.isArray(message.changes)) return false;
+      let changed = false;
+      for (const change of message.changes) {
+        const side = String(change?.[0] || "").toLowerCase();
+        const levels = side === "buy" || side === "bid" ? orderBookState.bids : side === "sell" || side === "ask" ? orderBookState.asks : null;
+        if (levels) changed = setBookLevel(levels, change?.[1], change?.[2]) || changed;
+      }
+      if (!changed) return false;
+      updateBookSpread("level2 batch");
+      bookRefreshCount += 1;
+      bookStreamStarted = true;
+      stopBookPolling();
+      publishBookMarket(false);
+      return true;
     }
 
     function recordTick(product, value, source) {
@@ -265,6 +402,8 @@ export const liveMarketScript = `
         ethFlash: lastFlashProduct === "ETH-USD" ? lastFlashTone : "",
         btcCandles: candleString("BTC-USD"),
         ethCandles: candleString("ETH-USD"),
+        book: bookRows(),
+        bookSpread: orderBookState.spread,
         trend: btcSeries.join(","),
         clock: recentTicks[0]?.time || "waiting",
         ticks: recentTicks.length
@@ -275,6 +414,7 @@ export const liveMarketScript = `
           stepState("Coinbase WS", fallbackStarted ? "wait" : "active", "public exchange ticker"),
           stepState("REST fallback", fallbackStarted ? "active" : "wait", "keeps demo moving if sockets fail"),
           stepState("3H candles", candleRefreshCount > 0 ? "done" : "active", candleRefreshCount + " refreshes"),
+          stepState("Order book", bookRefreshCount > 0 ? "done" : "active", orderBookState.source),
           stepState("LensUI source", "active", tickCount + " live updates applied")
         ].join(";")
       });
@@ -318,6 +458,21 @@ export const liveMarketScript = `
       publishMarket();
     }
 
+    async function fetchOrderBook(product = bookProduct, source = "REST book fallback") {
+      try {
+        const response = await fetch("https://api.exchange.coinbase.com/products/" + product + "/book?level=2", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = await response.json();
+        applyBookSnapshot(payload, source);
+      } catch {}
+    }
+
+    function startBookPolling() {
+      if (window.__lensMarketBookInterval) return;
+      fetchOrderBook(bookProduct, "REST book fallback");
+      window.__lensMarketBookInterval = setInterval(() => fetchOrderBook(bookProduct, "REST book fallback"), 2500);
+    }
+
     async function fetchCandles(product) {
       const end = new Date();
       const start = new Date(end.getTime() - 3 * 60 * 60 * 1000);
@@ -351,31 +506,45 @@ export const liveMarketScript = `
     }
 
     publishMarket();
+    fetchOrderBook(bookProduct, "REST seed");
     refreshCandles();
     try {
       const socket = new WebSocket("wss://ws-feed.exchange.coinbase.com");
       window.__lensMarketSocket = socket;
       socket.addEventListener("open", () => {
-        feedStatus = "subscribed to Coinbase ticker";
-        socket.send(JSON.stringify({ type: "subscribe", product_ids: products, channels: ["ticker"] }));
+        feedStatus = "subscribed to Coinbase ticker + level2";
+        socket.send(JSON.stringify({
+          type: "subscribe",
+          channels: [
+            { name: "ticker", product_ids: products },
+            { name: "level2_batch", product_ids: [bookProduct] }
+          ]
+        }));
         publishMarket();
       });
       socket.addEventListener("message", (event) => {
         try {
-          for (const ticker of extractTickers(JSON.parse(event.data))) applyTicker(ticker);
+          const message = JSON.parse(event.data);
+          for (const ticker of extractTickers(message)) applyTicker(ticker);
+          if (message.type === "snapshot" && message.product_id === bookProduct) applyBookSnapshot(message, "level2 snapshot");
+          if (message.type === "l2update") applyBookUpdate(message);
         } catch {}
       });
       socket.addEventListener("error", () => {
         if (!fallbackStarted) pollSpot();
+        startBookPolling();
       });
       socket.addEventListener("close", () => {
         if (!fallbackStarted) pollSpot();
+        startBookPolling();
       });
       window.setTimeout(() => {
         if (tickCount === 0 && !fallbackStarted) pollSpot();
+        if (!bookStreamStarted) startBookPolling();
       }, 4200);
     } catch {
       pollSpot();
+      startBookPolling();
     }
     window.__lensMarketFallbackInterval = setInterval(pollSpot, 8000);
     window.__lensMarketCandleInterval = setInterval(refreshCandles, 300000);

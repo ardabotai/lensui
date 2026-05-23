@@ -100,7 +100,7 @@ export type LensNodeComponent =
   | "webview" | "vector" | "button" | "tabs" | "tab" | "deck" | "page" | "metric" | "chart"
   | "scene" | "markdown" | "weather" | "newsList" | "newsDetail" | "sourceStrip" | "sourceRef"
   | "timeline" | "event" | "comparison" | "comparisonItem" | "memoryProfile" | "memoryFact"
-  | "steps" | "step" | "mosaic" | "customHTML" | "react" | "swiftui";
+  | "steps" | "step" | "mosaic" | "orderBook" | "customHTML" | "react" | "swiftui";
 
 export interface LensNode {
   component: LensNodeComponent;
@@ -219,7 +219,8 @@ const builtinAliases: Record<string, ComponentDefinition> = {
   MF: def("memoryFact"),
   ST: def("steps"),
   SI: def("step"),
-  MO: def("mosaic")
+  MO: def("mosaic"),
+  OB: def("orderBook"), orderBook: def("orderBook")
 };
 
 function def(component: LensNodeComponent): ComponentDefinition {
@@ -1251,7 +1252,7 @@ function bindingRole(component: LensNodeComponent, argIndex?: number, propKey?: 
     return component === "webview" ? "webViewURL" : "mediaSource";
   }
   if (component === "chart") return "chartData";
-  if (["newsList", "sourceStrip", "timeline", "comparison", "memoryProfile", "steps", "mosaic"].includes(component)) return "repeaterItems";
+  if (["newsList", "sourceStrip", "timeline", "comparison", "memoryProfile", "steps", "mosaic", "orderBook"].includes(component)) return "repeaterItems";
   if (["image", "video", "mediaStrip"].includes(component)) return "mediaSource";
   if (component === "webview") return "webViewURL";
   return argIndex == null ? "attribute" : "text";

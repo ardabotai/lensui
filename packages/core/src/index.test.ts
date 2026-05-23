@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LensUIWorkspace, normalizeSavedRegistry, parseLightcode, parseCommandStream } from "./index";
+import { LensUIWorkspace, collectBindings, normalizeSavedRegistry, parseLightcode, parseCommandStream } from "./index";
 
 describe("@lensui/core", () => {
   it("parses compact command streams", () => {
@@ -88,10 +88,15 @@ R
 0V|$news.headline
 1M|Trend|$news.trend
 1NL|Latest||$news.items
+1OB|BTC/USD|$ticks.spread|items=$ticks.book
 1J|$news.image|Lead`);
 
     expect(parsed.dataSources[0]).toMatchObject({ id: "news", ttl: 30, mode: "poll" });
     expect(parsed.dataSources[1]).toMatchObject({ id: "ticks", url: "wss://example.com/market", mode: "stream" });
+    expect(collectBindings(parsed.root, parsed.dataSources)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceID: "ticks", path: "book", role: "repeaterItems" }),
+      expect.objectContaining({ sourceID: "ticks", path: "spread", role: "repeaterItems" })
+    ]));
   });
 
   it("parses inline style recipes and saved style packs", () => {

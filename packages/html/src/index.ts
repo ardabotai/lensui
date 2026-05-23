@@ -165,6 +165,7 @@ export class LensHTMLRenderer {
       case "steps": return this.renderSteps(node);
       case "step": return this.renderStep(node);
       case "mosaic": return this.renderMosaic(node);
+      case "orderBook": return this.renderOrderBook(node);
       case "customHTML": return this.renderCustomHTML(node);
       case "react": return `<div class="lens-panel rounded-lg border p-4 text-sm text-muted-foreground">React component ${esc(node.reactExport ?? "default")} registered.</div>`;
       case "swiftui": return `<div class="lens-panel rounded-lg border p-4 text-sm text-muted-foreground">Native adapter ${esc(arg(node, 0) ?? node.key)} registered.</div>`;
@@ -508,6 +509,35 @@ export class LensHTMLRenderer {
       ? node.children.map((child, index) => `<div class="${index === 0 ? "sm:col-span-2 sm:row-span-2" : ""}">${child.component === "video" ? this.renderVideo(child) : this.renderImage(child)}</div>`).join("")
       : rows.map((row, index) => this.renderCompactMedia(row, index === 0 ? height * 2 + 12 : height, index === 0)).join("");
     return `<section class="lens-panel rounded-lg border p-4" data-lens-repeat="mosaic" ${this.attrs(node, "mosaic")}>${title ? `<h2 class="lens-display text-lg font-semibold">${boundText(this.sources, title)}</h2>` : ""}${caption ? `<p class="mb-3 text-sm text-muted-foreground">${boundText(this.sources, caption)}</p>` : ""}<div class="grid min-w-0 gap-3" data-lens-adaptive-grid data-min-cell-width="180" data-max-cols="3">${items}</div></section>`;
+  }
+
+  private renderOrderBook(node: LensNode): string {
+    const title = arg(node, 0) ?? "Order book";
+    const spread = arg(node, 1) ?? node.props.spread;
+    const itemValue = node.props.items ?? arg(node, 2);
+    const itemFallback = bindingReference(itemValue) ? "" : itemValue ?? "";
+    const rows = compactRows(resolveBinding(itemValue, this.sources, itemFallback));
+    const depth = Math.max(1, Math.min(12, Number.parseInt(node.props.depth ?? node.props.d ?? "5", 10) || 5));
+    const levels = rows.map(orderBookLevel).filter((level): level is OrderBookLevel => Boolean(level));
+    const asks = levels.filter((level) => level.side === "ask").slice(0, depth).reverse();
+    const bids = levels.filter((level) => level.side === "bid").slice(0, depth);
+    const maxTotal = Math.max(1, ...levels.map((level) => level.total));
+    const height = numberProp(node, "height", numberProp(node, "h", 0));
+    const bodyStyle = ` style="${height > 0 ? `max-height:${height}px;overflow:hidden;` : ""}row-gap:2px"`;
+    const header = `<div class="grid grid-cols-[34px_1fr_1fr_1fr] gap-2 px-2 font-mono uppercase text-muted-foreground" style="font-size:8px;line-height:10px"><span></span><span class="text-right">price</span><span class="text-right">size</span><span class="text-right">cum</span></div>`;
+    const askRows = asks.map((level) => this.renderOrderBookRow(level, maxTotal)).join("");
+    const bidRows = bids.map((level) => this.renderOrderBookRow(level, maxTotal)).join("");
+    const empty = `<div class="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">waiting for book</div>`;
+    return `<section class="lens-panel rounded-lg border p-3" data-lens-order-book data-lens-repeat="order-book" ${this.attrs(node, "orderBook")}><div class="flex items-center justify-between gap-3"><h2 class="lens-display truncate text-lg font-semibold">${boundText(this.sources, title)}</h2>${spread ? `<span class="font-mono text-[10px] uppercase text-muted-foreground">${boundText(this.sources, spread)}</span>` : ""}</div><div class="mt-2 grid" data-lens-order-book-body${bodyStyle}>${header}${askRows || (!bidRows ? empty : "")}${spread ? `<div class="rounded-sm border border-border/70 bg-muted/50 px-2 text-center font-mono uppercase text-muted-foreground" style="font-size:9px;line-height:11px;padding-top:2px;padding-bottom:2px">${boundText(this.sources, spread)}</div>` : ""}${bidRows}</div></section>`;
+  }
+
+  private renderOrderBookRow(level: OrderBookLevel, maxTotal: number): string {
+    const width = Math.max(4, Math.min(100, (level.total / maxTotal) * 100)).toFixed(1);
+    const tone = level.side === "ask" ? "destructive" : "success";
+    const label = level.side === "ask" ? "ASK" : "BID";
+    const side = level.side === "ask" ? "right-0" : "left-0";
+    const text = level.side === "ask" ? "text-destructive" : "text-success";
+    return `<div class="relative grid grid-cols-[34px_1fr_1fr_1fr] gap-2 overflow-hidden rounded-sm px-2 font-mono tabular-nums" style="font-size:9px;line-height:11px;padding-top:1px;padding-bottom:1px"><span class="absolute inset-y-0 ${side}" style="width:${width}%;background:hsl(var(--${tone}) / 0.14)"></span><span class="relative ${text}">${label}</span><span class="relative text-right ${text}">${esc(level.price)}</span><span class="relative text-right text-foreground/90">${esc(level.size)}</span><span class="relative text-right text-muted-foreground">${esc(level.totalText)}</span></div>`;
   }
 
   private renderNewsRow(row: string | string[]): string {
@@ -1528,6 +1558,14 @@ type CandleDatum = {
   close: number;
 };
 
+type OrderBookLevel = {
+  side: "ask" | "bid";
+  price: string;
+  size: string;
+  total: number;
+  totalText: string;
+};
+
 function candleData(raw: string): CandleDatum[] {
   if (!raw) return [];
   try {
@@ -1586,6 +1624,22 @@ function compactRows(raw: string): string[][] {
     if (Array.isArray(json)) return json.map((item) => Array.isArray(item) ? item.map(String) : Object.values(item ?? {}).map(String));
   } catch {}
   return raw.split(";").map(compactRow).filter((row) => row.some(Boolean));
+}
+
+function orderBookLevel(row: string[]): OrderBookLevel | undefined {
+  const rawSide = (row[0] ?? "").toLowerCase();
+  const side = ["ask", "asks", "a", "sell", "s"].includes(rawSide)
+    ? "ask"
+    : ["bid", "bids", "b", "buy"].includes(rawSide)
+      ? "bid"
+      : undefined;
+  if (!side) return undefined;
+  const price = row[1] ?? "";
+  const size = row[2] ?? "";
+  const totalText = row[3] ?? size;
+  const total = Number(totalText.replaceAll(",", "")) || Number(size.replaceAll(",", "")) || 0;
+  if (!price || !size) return undefined;
+  return { side, price, size, total: Math.max(0, total), totalText };
 }
 
 function stepMark(status: string): string {

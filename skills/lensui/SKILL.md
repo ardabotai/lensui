@@ -195,6 +195,7 @@ Semantic surfaces:
 - `1CP|title|summary|items=label^value^detail^tone^img;...`
 - `1MM|title|summary|items=label^value^detail^source^conf;...`
 - `1ST|title|summary|items=label^state^detail;...`
+- `1OB|BTC/USD Book|$market.spread|items=$market.book|depth=5|h=210`; rows are `ask^price^size^cum;bid^price^size^cum`
 - `1Q|caption|cols=Name^Value|items=A^1;B^2`
 - `1MD|markdown text`
 - `1WX|loc|temp|condition|detail|hi=|lo=|wind=|hum=`
@@ -210,7 +211,7 @@ Supporting:
 - `1N|label|variant=secondary`
 - `1Y|selected=0` with `2TB|Label` children
 
-Compact rows use `^` between cells and `;` between rows. Prefer rows for lists, sources, timelines, comparisons, memory facts, status sequences, tables, media rails, and mosaics.
+Compact rows use `^` between cells and `;` between rows. Prefer rows for lists, sources, timelines, comparisons, memory facts, status sequences, order books, tables, media rails, and mosaics.
 
 ## Patterns
 
@@ -253,6 +254,17 @@ Live source dashboard:
 1H|line|$metrics.trend|live signal|h=180
 1X|shader|Generative field|h=220
 1ST|Loop|$metrics.phase|items=$metrics.steps
+```
+
+Condensed crypto order book:
+
+```text
+0DS|market|https://example.com/market.json|ttl=3|mode=poll
+0F|st=studio
+0V|BTC/USD|Live depth
+1G|auto|min=280|max=2|mh=220
+2M|Last|$market.last|$market.move|tone=$market.tone
+2OB|BTC/USD Book|$market.spread|items=$market.book|depth=5|h=210
 ```
 
 Media storyboard:

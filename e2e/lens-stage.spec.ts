@@ -141,7 +141,7 @@ test.describe("LensUI browser stage runtime", () => {
       return window.lensStage!.setSource("news", {
         headline: "Updated from cache",
         items: "Story A,Desk;Story B,Wire",
-        spread: "spread 0.13 / 13.0 bps",
+        spread: "top gap $0.13",
         book: "ask^100.45^0.32^0.32;ask^100.38^0.18^0.50;ask^100.31^0.41^0.91;ask^100.24^0.27^1.18;ask^100.17^0.35^1.53;bid^100.12^0.44^0.44;bid^100.05^0.21^0.65;bid^99.98^0.52^1.17;bid^99.91^0.36^1.53;bid^99.84^0.29^1.82"
       });
     });
@@ -153,7 +153,7 @@ test.describe("LensUI browser stage runtime", () => {
     await expect(page.locator("[data-lens-order-book]")).toBeVisible();
     await expect(page.locator("[data-lens-order-book]")).toContainText("ASK");
     await expect(page.locator("[data-lens-order-book]")).toContainText("BID");
-    await expect(page.locator("[data-lens-order-book]")).toContainText("spread 0.13 / 13.0 bps");
+    await expect(page.locator("[data-lens-order-book]")).toContainText("top gap $0.13");
     const bookBody = await page.locator("[data-lens-order-book-body]").evaluate((element) => ({
       clientHeight: element.clientHeight,
       scrollHeight: element.scrollHeight
@@ -754,6 +754,7 @@ async function expectHeroOrderBookFits(page: Page, label = "hero"): Promise<void
   await expect(heroFrame.locator('[data-lens-component="metric"]'), label).toHaveCount(0);
   await expect(heroBook, label).toBeVisible();
   await expect(heroBook, label).toContainText("BTC/USD Book");
+  await expect(heroBook, label).toContainText("top gap");
   await expect(heroBook, label).toContainText("ASK");
   await expect(heroBook, label).toContainText("BID");
   const priceRow = heroFrame.locator("[data-lens-order-book-price]");

@@ -231,7 +231,7 @@ describe("@lensui/html", () => {
       btcFlash: "success",
       candles: "09:00,100,104,99,103;09:05,103,105,101,102;09:10,102,106,101,105",
       book: "ask^100.45^0.32^0.32;ask^100.38^0.18^0.50;bid^100.25^0.21^0.21;bid^100.12^0.44^0.65",
-      bookSpread: "spread 0.13 / 13.0 bps"
+      bookSpread: "top gap $0.13"
     });
 
     const result = renderer.render(`0DS|market|https://example.com/market.json
@@ -258,7 +258,7 @@ describe("@lensui/html", () => {
     expect(result.html).toContain("trade");
     expect(result.html).toContain("ASK");
     expect(result.html).toContain("BID");
-    expect(result.html).toContain("spread 0.13 / 13.0 bps");
+    expect(result.html).toContain("top gap $0.13");
     expect(result.html).toContain("$100.25");
     expect(result.html).toContain("100.45");
   });

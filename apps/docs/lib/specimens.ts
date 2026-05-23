@@ -135,7 +135,7 @@ export const liveMarketScript = `
     const directionState = new Map();
     const lastDisplayAt = new Map();
     const candleState = new Map();
-    const orderBookState = { bids: new Map(), asks: new Map(), spread: "spread waiting", source: "waiting for level2 book" };
+    const orderBookState = { bids: new Map(), asks: new Map(), spread: "top gap waiting", source: "waiting for level2 book" };
     const recentTicks = [];
     const btcSeries = [34, 36, 35, 39, 38, 42, 41, 44];
     const displayIntervalMs = 850;
@@ -153,7 +153,7 @@ export const liveMarketScript = `
     function formatPrice(value) {
       const price = Number(value);
       if (!Number.isFinite(price)) return "waiting";
-      const digits = price >= 1000 ? 0 : price >= 100 ? 2 : 3;
+      const digits = price >= 100 ? 2 : 3;
       return "$" + price.toLocaleString("en-US", { maximumFractionDigits: digits, minimumFractionDigits: digits >= 2 ? 2 : 0 });
     }
 
@@ -225,8 +225,16 @@ export const liveMarketScript = `
     function compactPrice(value) {
       const price = Number(value);
       if (!Number.isFinite(price)) return "—";
-      const digits = price >= 1000 ? 0 : price >= 100 ? 2 : 3;
+      const digits = price >= 100 ? 2 : 3;
       return price.toLocaleString("en-US", { maximumFractionDigits: digits, minimumFractionDigits: digits >= 2 ? 2 : 0 });
+    }
+
+    function gapLabel(value) {
+      const gap = Number(value);
+      if (!Number.isFinite(gap)) return "top gap waiting";
+      if (gap <= 0) return "top gap locked";
+      if (gap < 0.01) return "top gap < $0.01";
+      return "top gap $" + gap.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
     }
 
     function compactSize(value) {
@@ -299,8 +307,7 @@ export const liveMarketScript = `
       const bestAsk = bestPrice("asks");
       if (Number.isFinite(bestBid) && Number.isFinite(bestAsk)) {
         const spread = Math.max(0, bestAsk - bestBid);
-        const bps = bestBid > 0 ? (spread / bestBid) * 10000 : 0;
-        orderBookState.spread = "spread " + compactPrice(spread) + " / " + bps.toFixed(1) + " bps";
+        orderBookState.spread = gapLabel(spread);
       }
       orderBookState.source = source;
     }

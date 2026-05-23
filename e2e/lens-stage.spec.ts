@@ -725,6 +725,16 @@ R
     const heroFrame = page.frameLocator('iframe[title="LensUI live runtime preview"]');
     await expect(heroFrame.locator("#lens-stage-root")).toHaveAttribute("data-lens-size", "narrow");
     await expect(heroFrame.locator("[data-lens-adaptive-grid]").first()).toHaveAttribute("data-lens-cols", "1");
+    await expect(heroFrame.locator('[data-lens-component="metric"]').filter({ hasText: "ETH/USD" })).toBeHidden();
+    await expect(heroFrame.locator("[data-lens-order-book]")).toBeVisible();
+    const heroBookFit = await heroFrame.locator("[data-lens-order-book]").evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        bottom: rect.bottom,
+        viewportHeight: document.documentElement.clientHeight
+      };
+    });
+    expect(heroBookFit.bottom).toBeLessThanOrEqual(heroBookFit.viewportHeight + 1);
     expect(health.errors).toEqual([]);
   });
 });

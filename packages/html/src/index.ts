@@ -528,7 +528,22 @@ export class LensHTMLRenderer {
     const askRows = asks.map((level) => this.renderOrderBookRow(level, maxTotal)).join("");
     const bidRows = bids.map((level) => this.renderOrderBookRow(level, maxTotal)).join("");
     const empty = `<div class="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">waiting for book</div>`;
-    return `<section class="lens-panel rounded-lg border p-3" data-lens-order-book data-lens-repeat="order-book" ${this.attrs(node, "orderBook")}><div class="flex items-center justify-between gap-3"><h2 class="lens-display truncate text-lg font-semibold">${boundText(this.sources, title)}</h2>${spread ? `<span class="font-mono text-[10px] uppercase text-muted-foreground">${boundText(this.sources, spread)}</span>` : ""}</div><div class="mt-2 grid" data-lens-order-book-body${bodyStyle}>${header}${askRows || (!bidRows ? empty : "")}${spread ? `<div class="rounded-sm border border-border/70 bg-muted/50 px-2 text-center font-mono uppercase text-muted-foreground" style="font-size:9px;line-height:11px;padding-top:2px;padding-bottom:2px">${boundText(this.sources, spread)}</div>` : ""}${bidRows}</div></section>`;
+    const currentValue = node.props.mid ?? node.props.current ?? node.props.price ?? node.props.last;
+    const toneValue = String(resolveBinding(node.props.tone, this.sources, node.props.tone ?? "") ?? "");
+    const flashValue = String(resolveBinding(node.props.flash, this.sources, node.props.flash ?? "") ?? "");
+    const divider = currentValue
+      ? this.renderOrderBookPrice(currentValue, toneValue, flashValue)
+      : spread
+        ? `<div class="rounded-sm border border-border/70 bg-muted/50 px-2 text-center font-mono uppercase text-muted-foreground" style="font-size:9px;line-height:11px;padding-top:2px;padding-bottom:2px">${boundText(this.sources, spread)}</div>`
+        : "";
+    return `<section class="lens-panel rounded-lg border p-3" data-lens-order-book data-lens-repeat="order-book" ${this.attrs(node, "orderBook")}><div class="flex items-center justify-between gap-3"><h2 class="lens-display truncate text-lg font-semibold">${boundText(this.sources, title)}</h2>${spread ? `<span class="font-mono text-[10px] uppercase text-muted-foreground">${boundText(this.sources, spread)}</span>` : ""}</div><div class="mt-2 grid" data-lens-order-book-body${bodyStyle}>${header}${askRows || (!bidRows ? empty : "")}${divider}${bidRows}</div></section>`;
+  }
+
+  private renderOrderBookPrice(currentValue: string, toneValue: string, flashValue: string): string {
+    const tone = toneTextClass(toneValue);
+    const border = toneBorderClass(toneValue);
+    const flashTone = metricFlashTone(flashValue || toneValue);
+    return `<div class="relative grid grid-cols-[42px_1fr_42px] items-center gap-2 overflow-hidden rounded-sm border ${border} bg-muted/60 px-2 py-2 tabular-nums" data-lens-order-book-price data-lens-tone="${esc(toneValue || "neutral")}" ${flashTone ? `data-lens-flash="${esc(flashTone)}"` : ""}><span class="font-mono uppercase text-muted-foreground" style="font-size:9px;line-height:10px">last</span><strong class="lens-display text-center text-xl font-semibold leading-none ${tone}" ${bindAttr(currentValue, "text")}>${boundText(this.sources, currentValue, "waiting")}</strong><span class="text-right font-mono uppercase text-muted-foreground" style="font-size:9px;line-height:10px">trade</span></div>`;
   }
 
   private renderOrderBookRow(level: OrderBookLevel, maxTotal: number): string {

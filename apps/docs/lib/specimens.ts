@@ -107,7 +107,7 @@ export const liveMarketLightcode = `0DS|market|wss://ws-feed.exchange.coinbase.c
 2M|ETH/USD|$market.eth|$market.ethMove|tone=$market.ethTone|flash=$market.ethFlash|s=hot
 1G|auto|min=300|max=2|mh=232
 2H|candle|$market.btcCandles|BTC 3H / 5M|h=200
-2OB|BTC/USD Book|$market.bookSpread|items=$market.book|depth=5|h=205
+2OB|BTC/USD Book|$market.bookSpread|items=$market.book|depth=6|h=235|mid=$market.btc|tone=$market.btcTone|flash=$market.btcFlash
 1G|auto|min=260|max=2|mh=230
 2TL|Recent tape|$market.clock|items=$market.ticks
 1ST|Feed health|$market.status|items=$market.steps`;
@@ -116,7 +116,7 @@ export const heroMarketLightcode = `0DS|market|wss://ws-feed.exchange.coinbase.c
 0DS|book|wss://ws-feed.exchange.coinbase.com|mode=stream
 0F|st=studio|d=compact
 0Y|hot|bg=card|bd=fg/24|p=4|r=2
-0OB|BTC/USD Book|$market.bookSpread|items=$market.book|depth=8|h=286`;
+0OB|BTC/USD Book|$market.bookSpread|items=$market.book|depth=6|h=286|mid=$market.btc|tone=$market.btcTone|flash=$market.btcFlash`;
 
 export const liveMarketScript = `
     if (window.__lensMarketSocket) {
@@ -130,12 +130,15 @@ export const liveMarketScript = `
     const products = ["BTC-USD", "ETH-USD"];
     const bookProduct = "BTC-USD";
     const priceState = new Map();
+    const displayPriceState = new Map();
     const moveState = new Map();
     const directionState = new Map();
+    const lastDisplayAt = new Map();
     const candleState = new Map();
     const orderBookState = { bids: new Map(), asks: new Map(), spread: "spread waiting", source: "waiting for level2 book" };
     const recentTicks = [];
     const btcSeries = [34, 36, 35, 39, 38, 42, 41, 44];
+    const displayIntervalMs = 850;
     let tickCount = 0;
     let feedStatus = "connecting to Coinbase WebSocket";
     let fallbackStarted = false;
@@ -166,14 +169,15 @@ export const liveMarketScript = `
       return new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     }
 
-    function pctMove(current, previous, direction) {
-      if (!Number.isFinite(current) || !Number.isFinite(previous) || previous <= 0) return "live";
-      const delta = ((current - previous) / previous) * 100;
-      return (direction > 0 ? "▲ " : "▼ ") + Math.abs(delta).toFixed(3) + "%";
+    function stateFor(product) {
+      return moveState.get(product) || { label: "waiting", tone: "warning" };
     }
 
-    function stateFor(product) {
-      return moveState.get(product) || { label: "▲ waiting", tone: "success" };
+    function displayPrice(product) {
+      const shown = Number(displayPriceState.get(product));
+      if (Number.isFinite(shown)) return shown;
+      const latest = Number(priceState.get(product));
+      return Number.isFinite(latest) ? latest : NaN;
     }
 
     function tickDirection(product, price, previous) {
@@ -181,8 +185,30 @@ export const liveMarketScript = `
         const delta = price - previous;
         if (delta > 0) return 1;
         if (delta < 0) return -1;
+        return 0;
       }
-      return directionState.get(product) || 1;
+      return directionState.get(product) || 0;
+    }
+
+    function updateDisplayedPrice(product, price, source) {
+      const previous = Number(displayPriceState.get(product));
+      const now = Date.now();
+      const lastAt = Number(lastDisplayAt.get(product)) || 0;
+      if (Number.isFinite(previous) && now - lastAt < displayIntervalMs) return false;
+      const direction = tickDirection(product, price, previous);
+      const tone = direction > 0 ? "success" : direction < 0 ? "destructive" : "warning";
+      displayPriceState.set(product, price);
+      lastDisplayAt.set(product, now);
+      moveState.set(product, {
+        label: source === "history" ? "history seed" : "last trade",
+        tone
+      });
+      if (direction !== 0) {
+        directionState.set(product, direction);
+        lastFlashProduct = product;
+        lastFlashTone = tone;
+      }
+      return true;
     }
 
     function candleNumber(value) {
@@ -283,7 +309,7 @@ export const liveMarketScript = `
       const rows = [];
       for (const side of ["asks", "bids"]) {
         let cumulative = 0;
-        for (const [price, size] of sortedBook(side).slice(0, 5)) {
+        for (const [price, size] of sortedBook(side).slice(0, 6)) {
           cumulative += size;
           rows.push([
             side === "asks" ? "ask" : "bid",
@@ -357,18 +383,12 @@ export const liveMarketScript = `
       const price = Number(value);
       if (!products.includes(product) || !Number.isFinite(price)) return false;
       const previous = Number(priceState.get(product));
-      const direction = tickDirection(product, price, previous);
-      const tone = direction > 0 ? "success" : "destructive";
-      const label = Number.isFinite(previous)
-        ? pctMove(price, previous, direction)
-        : (direction > 0 ? "▲ " : "▼ ") + (source === "history" ? "3H candle" : "live");
+      const rawDirection = tickDirection(product, price, previous);
+      const tone = rawDirection > 0 ? "success" : rawDirection < 0 ? "destructive" : "warning";
       priceState.set(product, price);
-      moveState.set(product, { label, tone });
-      directionState.set(product, direction);
+      const displayChanged = updateDisplayedPrice(product, price, source);
       updateLiveCandle(product, price);
       tickCount += 1;
-      lastFlashProduct = product;
-      lastFlashTone = tone;
       recentTicks.unshift({
         product: productLabel(product),
         price: formatPrice(price),
@@ -377,19 +397,19 @@ export const liveMarketScript = `
         tone
       });
       while (recentTicks.length > 6) recentTicks.pop();
-      return true;
+      return displayChanged;
     }
 
     function publishMarket() {
-      const btc = Number(priceState.get("BTC-USD"));
+      const btc = displayPrice("BTC-USD");
       if (Number.isFinite(btc)) {
         const normalized = 22 + Math.round((btc % 1000) / 1000 * 48);
         btcSeries.push(normalized);
         while (btcSeries.length > 18) btcSeries.shift();
       }
       window.lensStage.setSource("market", {
-        btc: formatPrice(priceState.get("BTC-USD")),
-        eth: formatPrice(priceState.get("ETH-USD")),
+        btc: formatPrice(displayPrice("BTC-USD")),
+        eth: formatPrice(displayPrice("ETH-USD")),
         btcMove: stateFor("BTC-USD").label,
         ethMove: stateFor("ETH-USD").label,
         btcTone: stateFor("BTC-USD").tone,
@@ -421,9 +441,10 @@ export const liveMarketScript = `
     function applyTicker(ticker) {
       const product = ticker.product_id || ticker.productId || ticker.product;
       const price = ticker.price || ticker.last_price || ticker.price_level || ticker.best_bid || ticker.best_ask;
-      if (price == null || !recordTick(product, price, "trade")) return;
+      if (price == null) return;
+      const changed = recordTick(product, price, "trade");
       feedStatus = "streaming Coinbase trades";
-      publishMarket();
+      if (changed) publishMarket();
     }
 
     function extractTickers(message) {
@@ -440,6 +461,7 @@ export const liveMarketScript = `
     async function pollSpot() {
       fallbackStarted = true;
       feedStatus = "polling Coinbase spot prices";
+      let changed = false;
       await Promise.all(products.map(async (product) => {
         try {
           const response = await fetch("https://api.coinbase.com/v2/prices/" + product + "/spot", { cache: "no-store" });
@@ -447,11 +469,11 @@ export const liveMarketScript = `
           const payload = await response.json();
           const amount = payload && payload.data && payload.data.amount;
           if (amount != null) {
-            recordTick(product, amount, "spot poll");
+            changed = recordTick(product, amount, "spot poll") || changed;
           }
         } catch {}
       }));
-      publishMarket();
+      if (changed) publishMarket();
     }
 
     async function fetchOrderBook(product = bookProduct, source = "REST book fallback") {

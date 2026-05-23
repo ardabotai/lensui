@@ -756,6 +756,10 @@ async function expectHeroOrderBookFits(page: Page, label = "hero"): Promise<void
   await expect(heroBook, label).toContainText("BTC/USD Book");
   await expect(heroBook, label).toContainText("ASK");
   await expect(heroBook, label).toContainText("BID");
+  const priceRow = heroFrame.locator("[data-lens-order-book-price]");
+  await expect(priceRow, label).toBeVisible();
+  await expect(priceRow, label).toContainText("last");
+  await expect(priceRow, label).toContainText("$");
   const fit = await heroBook.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const root = document.querySelector<HTMLElement>("#lens-stage-root");

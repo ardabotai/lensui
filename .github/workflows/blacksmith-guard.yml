@@ -1,0 +1,32 @@
+name: Blacksmith runner guard
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+
+jobs:
+  forbid-github-hosted-ubuntu-windows:
+    name: forbid ubuntu-latest / windows-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if workflows use GitHub-hosted Ubuntu/Windows labels
+        run: |
+          set -euo pipefail
+          hits="$(grep -REn --include='*.yml' --include='*.yaml' \
+            -e 'runs-on:[[:space:]]*(ubuntu-latest|windows-latest)([[:space:]]|$)' \
+            .github/workflows || true)"
+          if [ -n "$hits" ]; then
+            echo "::error::Found GitHub-hosted runner labels. Use Blacksmith (e.g. blacksmith-4vcpu-ubuntu-2404)."
+            printf '%s\n' "$hits"
+            exit 1
+          fi
+          echo "OK: no ubuntu-latest / windows-latest runs-on labels."
